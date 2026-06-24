@@ -313,6 +313,44 @@ h2 { font-size: 26px; }
   font-style: italic;
 }
 
+/* drag handle + drag states */
+.order-row .grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: #6c757d;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -2px;
+  cursor: grab;
+  user-select: none;
+  background: #f1f3f5;
+  border: 1px solid #e0e0e0;
+}
+.order-row .grip:active { cursor: grabbing; }
+.order-row.draggable {
+  cursor: grab;
+  transition: opacity 0.15s, border-color 0.15s, transform 0.15s;
+}
+.order-row.draggable:hover {
+  border-color: #2c7ed1;
+}
+.order-row.dragging {
+  opacity: 0.45;
+  border-style: dashed;
+  border-color: #2c7ed1;
+}
+.order-row.drop-target {
+  border-color: #27ae60;
+  border-width: 2px;
+  background: #eef9f1;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(39,174,96,0.18);
+}
+
 /* ---- Admin collapsible cards ---- */
 .participant-header {
   display: flex;
