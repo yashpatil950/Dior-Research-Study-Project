@@ -15,7 +15,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
   return (
     <div className="app">
       <div className="topbar">
-        <span className="title">PACT + Sensor Capture</span>
+        <span className="title">DIOR</span>
         <span className="nav-links">
           <Link to="/session-setup">Setup</Link>
           <Link to="/baseline/start">Baseline ▶</Link>

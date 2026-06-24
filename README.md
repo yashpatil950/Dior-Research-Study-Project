@@ -1,4 +1,4 @@
-# PACT + Sensor Capture (React)
+# DIOR (React)
 
 React port of the PACT task plus baseline heart-rate capture from Mionix (mouse)
 and EmotiBit, with a unified Admin dashboard.
