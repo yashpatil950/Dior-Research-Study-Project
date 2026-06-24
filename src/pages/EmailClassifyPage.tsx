@@ -5,9 +5,19 @@ import { TaskSetup } from "../components/TaskSetup";
 import { TaskTimerOverlay } from "../components/TaskTimerOverlay";
 import { useTaskTiming } from "../hooks/useTaskTiming";
 import { EmailMockup, type MockEmail } from "../components/EmailMockup";
-import { getCurrentParticipant, safeFileSegment, upsertEmailTask, type EmailClassificationResult } from "../lib/store";
+import {
+  getCurrentParticipant,
+  safeFileSegment,
+  saveTaskResult,
+  nextRouteAfter,
+  nextLabelAfter,
+  TASK_FILE_SEG,
+  TASK_LABEL,
+  type EmailClassificationResult,
+  type TaskKey,
+} from "../lib/store";
 import { writeWorkbook } from "../lib/excel";
-import { isEmotiBitHrSample } from "../lib/sensors";
+import { isEmotiBitHrSample, isEmotiBitEdaSample } from "../lib/sensors";
 
 const CATEGORIES: MockEmail["category"][] = ["Update", "Question/Request", "Advertisement/Spam"];
 
@@ -19,15 +29,11 @@ interface Choice {
 }
 
 export const EmailClassifyPage = ({
-  taskId,
+  taskKey,
   emails,
-  nextRoute,
-  nextRouteLabel,
 }: {
-  taskId: 3 | 6;
+  taskKey: TaskKey;
   emails: MockEmail[];
-  nextRoute: string;
-  nextRouteLabel: string;
 }) => {
   const navigate = useNavigate();
   const participant = getCurrentParticipant() ?? "";
@@ -44,6 +50,7 @@ export const EmailClassifyPage = ({
     if (timing.secondsLeft !== null && timing.secondsLeft <= 0) {
       doFinalize("time_expired");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timing.phase, timing.secondsLeft]);
 
   const onPick = (cat: MockEmail["category"]) => {
@@ -69,13 +76,13 @@ export const EmailClassifyPage = ({
   const onPrev = () => idx > 0 && setIdx(idx - 1);
 
   const onStopEarly = () => {
-    if (!confirm(`End Task ${taskId} now and save?`)) return;
+    if (!confirm(`End ${TASK_LABEL[taskKey]} now and save?`)) return;
     doFinalize(timing.timed ? "stopped_early" : "non_timed_completed");
   };
 
   const doFinalize = (status: EmailClassificationResult["status"]) => {
     const f = timing.finalize(status);
-    const fileName = `${safeFileSegment(participant)}_Task${taskId}_data.xlsx`;
+    const fileName = `${safeFileSegment(participant)}_${TASK_FILE_SEG[taskKey]}_data.xlsx`;
 
     const nAnswered = choices.filter((c) => c.selected !== null).length;
     const nCorrect = choices.filter((c) => c.selected === c.correct).length;
@@ -97,7 +104,8 @@ export const EmailClassifyPage = ({
 
     const summary = [{
       participant,
-      task_id: taskId,
+      task_key: taskKey,
+      task_label: TASK_LABEL[taskKey],
       timed: f.timed,
       time_limit_s: f.time_limit_s ?? "",
       status: f.status,
@@ -110,10 +118,18 @@ export const EmailClassifyPage = ({
       n_answered: nAnswered,
       n_correct: nCorrect,
       accuracy_pct: acc,
-      mouse_hr_avg: f.hr.mouse_hr_avg ?? "",
-      mouse_hr_n_samples: f.hr.mouse_hr_n_samples,
-      emotibit_hr_avg: f.hr.emotibit_hr_avg ?? "",
-      emotibit_hr_n_samples: f.hr.emotibit_hr_n_samples,
+      mouse_hr_avg: f.sensors.mouse_hr_avg ?? "",
+      mouse_hr_n_samples: f.sensors.mouse_hr_n_samples,
+      mouse_hr_avg_last60s: f.sensors.mouse_hr_avg_last60s ?? "",
+      mouse_hr_n_samples_last60s: f.sensors.mouse_hr_n_samples_last60s,
+      emotibit_hr_avg: f.sensors.emotibit_hr_avg ?? "",
+      emotibit_hr_n_samples: f.sensors.emotibit_hr_n_samples,
+      emotibit_hr_avg_last60s: f.sensors.emotibit_hr_avg_last60s ?? "",
+      emotibit_hr_n_samples_last60s: f.sensors.emotibit_hr_n_samples_last60s,
+      emotibit_eda_avg: f.sensors.emotibit_eda_avg ?? "",
+      emotibit_eda_n_samples: f.sensors.emotibit_eda_n_samples,
+      emotibit_eda_avg_last60s: f.sensors.emotibit_eda_avg_last60s ?? "",
+      emotibit_eda_n_samples_last60s: f.sensors.emotibit_eda_n_samples_last60s,
     }];
 
     writeWorkbook(fileName, {
@@ -125,38 +141,39 @@ export const EmailClassifyPage = ({
       emotibit_hr: f.emotibit_samples.filter(isEmotiBitHrSample).map((s) => ({
         ts_iso: s.ts_iso, unix_ms: s.unix_ms, stream_tag: s.stream_tag, value: s.value, reliability: s.reliability,
       })),
+      emotibit_eda: f.emotibit_samples.filter(isEmotiBitEdaSample).map((s) => ({
+        ts_iso: s.ts_iso, unix_ms: s.unix_ms, stream_tag: s.stream_tag, value: s.value, reliability: s.reliability,
+      })),
     });
 
     const result: EmailClassificationResult = {
-      task_id: taskId,
+      task_key: taskKey,
       participant_name: participant,
       timed: f.timed,
       time_limit_s: f.time_limit_s,
       timing: f.timing,
       status: f.status,
-      hr: f.hr,
+      sensors: f.sensors,
       n_emails: emails.length,
       n_answered: nAnswered,
       n_correct: nCorrect,
       accuracy_pct: acc,
       file_name: fileName,
     };
-    upsertEmailTask(participant, taskId, result);
+    saveTaskResult(participant, taskKey, result);
     setFinalResult(result);
   };
 
   if (timing.phase === "setup") {
     return (
       <TaskSetup
-        title={`Task ${taskId} — Email Classification`}
+        title={TASK_LABEL[taskKey]}
         description={
-          <>
-            <p>
-              You'll see 15 emails one at a time. For each, decide whether it's an{" "}
-              <b>Update</b>, a <b>Question / Request</b>, or <b>Advertisement / Spam</b>,
-              then click <b>Next</b>.
-            </p>
-          </>
+          <p>
+            You'll see {emails.length} emails one at a time. For each, decide whether it's an{" "}
+            <b>Update</b>, a <b>Question / Request</b>, or <b>Advertisement / Spam</b>,
+            then click <b>Next</b>.
+          </p>
         }
         defaultDurationS={600}
         timed={timing.timed}
@@ -164,7 +181,7 @@ export const EmailClassifyPage = ({
         onTimedChange={timing.setTimed}
         onDurationChange={timing.setDurationS}
         onStart={timing.startTask}
-        startLabel={`Start Task ${taskId}`}
+        startLabel={`Start ${TASK_LABEL[taskKey]}`}
       />
     );
   }
@@ -172,7 +189,7 @@ export const EmailClassifyPage = ({
   if (timing.phase === "done" && finalResult) {
     return (
       <div className="screen">
-        <h1>Task {taskId} Complete</h1>
+        <h1>{TASK_LABEL[taskKey]} — Complete</h1>
         <div className="instructions">
           <p>Data downloaded as <code>{finalResult.file_name}</code>.</p>
           <table className="summary-table">
@@ -182,12 +199,13 @@ export const EmailClassifyPage = ({
               <tr><th>Correct</th><td>{finalResult.n_correct}</td></tr>
               <tr><th>Accuracy</th><td>{finalResult.accuracy_pct === "" ? "—" : `${finalResult.accuracy_pct}%`}</td></tr>
               <tr><th>Total time</th><td>{(finalResult.timing.total_ms / 1000).toFixed(1)} s</td></tr>
-              <tr><th>EmotiBit avg HR</th><td>{finalResult.hr.emotibit_hr_avg ?? "—"} bpm</td></tr>
-              <tr><th>Mouse avg HR</th><td>{finalResult.hr.mouse_hr_avg ?? "—"} bpm</td></tr>
+              <tr><th>EmotiBit HR (full / last-60s)</th><td>{finalResult.sensors.emotibit_hr_avg ?? "—"} / {finalResult.sensors.emotibit_hr_avg_last60s ?? "—"} bpm</td></tr>
+              <tr><th>Mouse HR (full / last-60s)</th><td>{finalResult.sensors.mouse_hr_avg ?? "—"} / {finalResult.sensors.mouse_hr_avg_last60s ?? "—"} bpm</td></tr>
+              <tr><th>EmotiBit EDA (full / last-60s)</th><td>{finalResult.sensors.emotibit_eda_avg ?? "—"} / {finalResult.sensors.emotibit_eda_avg_last60s ?? "—"}</td></tr>
             </tbody>
           </table>
-          <button className="btn btn-success" onClick={() => navigate(nextRoute)}>
-            Continue → {nextRouteLabel}
+          <button className="btn btn-success" onClick={() => navigate(nextRouteAfter(participant, taskKey))}>
+            Continue → {nextLabelAfter(participant, taskKey)}
           </button>
         </div>
       </div>
@@ -201,9 +219,13 @@ export const EmailClassifyPage = ({
     <div className="screen">
       <ConnectionGate />
       {timing.timed && (
-        <TaskTimerOverlay secondsLeft={timing.secondsLeft} onStopEarly={onStopEarly} />
+        <TaskTimerOverlay
+          secondsLeft={timing.secondsLeft}
+          totalSeconds={timing.durationS}
+          onStopEarly={onStopEarly}
+        />
       )}
-      <h1 className="center">Task {taskId} — Email {idx + 1} of {emails.length}</h1>
+      <h1 className="center">{TASK_LABEL[taskKey]} — Email {idx + 1} of {emails.length}</h1>
       <div className="classify-progress">
         Decide whether this email is an <b>Update</b>, a <b>Question / Request</b>, or <b>Advertisement / Spam</b>.
       </div>
@@ -235,20 +257,10 @@ export const EmailClassifyPage = ({
 // ---- Thin wrappers per task ----
 import { TASK3_EMAILS, TASK6_EMAILS } from "../lib/task-emails";
 
-export const Task3Page = () => (
-  <EmailClassifyPage
-    taskId={3}
-    emails={TASK3_EMAILS}
-    nextRoute="/pact"
-    nextRouteLabel="PACT task"
-  />
+export const EmailSortingAPage = () => (
+  <EmailClassifyPage taskKey="email_sorting_a" emails={TASK3_EMAILS} />
 );
 
-export const Task6Page = () => (
-  <EmailClassifyPage
-    taskId={6}
-    emails={TASK6_EMAILS}
-    nextRoute="/aes-text"
-    nextRouteLabel="AES Text"
-  />
+export const EmailSortingBPage = () => (
+  <EmailClassifyPage taskKey="email_sorting_b" emails={TASK6_EMAILS} />
 );

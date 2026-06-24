@@ -18,23 +18,39 @@ export interface TimingBlock {
 /** Outcome of a timed task: completed normally, stopped early by operator, or ran out of time. */
 export type TaskStatus = "completed" | "stopped_early" | "time_expired" | "non_timed_completed";
 
-/** HR averages captured during a task. */
-export interface HrSnapshot {
+/**
+ * Sensor averages captured during a task. We compute both the full-duration
+ * average and the "last 60 seconds" average for each of:
+ *   - Mionix mouse HR
+ *   - EmotiBit HR
+ *   - EmotiBit EDA (electrodermal activity, EA stream tag)
+ */
+export interface SensorSnapshot {
+  // Full-duration averages
   mouse_hr_avg: number | null;
   mouse_hr_n_samples: number;
   emotibit_hr_avg: number | null;
   emotibit_hr_n_samples: number;
+  emotibit_eda_avg: number | null;
+  emotibit_eda_n_samples: number;
+  // Last-60-seconds averages (computed at task end)
+  mouse_hr_avg_last60s: number | null;
+  mouse_hr_n_samples_last60s: number;
+  emotibit_hr_avg_last60s: number | null;
+  emotibit_hr_n_samples_last60s: number;
+  emotibit_eda_avg_last60s: number | null;
+  emotibit_eda_n_samples_last60s: number;
 }
+
+/** @deprecated kept as alias for older types — same shape as SensorSnapshot. */
+export type HrSnapshot = SensorSnapshot;
 
 export interface BaselineResult {
   phase: "start" | "end";
   participant_name: string;
   duration_s: number;
   timing: TimingBlock;
-  mouse_hr_avg: number | null;
-  mouse_hr_n_samples: number;
-  emotibit_hr_avg: number | null;
-  emotibit_hr_n_samples: number;
+  sensors: SensorSnapshot;
   file_name: string;
 }
 
@@ -54,10 +70,7 @@ export interface PactResult {
   plan_mean_planning_rt_ms_correct: number | "";
   plan_mean_movement_time_ms: number | "";
   plan_mean_total_rt_ms: number | "";
-  mouse_hr_avg: number | null;
-  mouse_hr_n_samples: number;
-  emotibit_hr_avg: number | null;
-  emotibit_hr_n_samples: number;
+  sensors: SensorSnapshot;
   file_name: string;
 }
 
@@ -65,11 +78,9 @@ export interface PactResult {
 export interface AesResult {
   variant: "avatar" | "text";
   participant_name: string;
-  timed: boolean;
-  time_limit_s: number | null;
   timing: TimingBlock;
   status: TaskStatus;
-  hr: HrSnapshot;
+  sensors: SensorSnapshot;
   n_answered: number;
   n_items: number;
   total_score: number;
@@ -77,30 +88,30 @@ export interface AesResult {
   file_name: string;
 }
 
-/** Generic timed-task result for the questionnaire-style tasks 1–4. */
+/** Generic timed-task result for the questionnaire-style tasks (Form Entry 1/2, Travel Card A/B). */
 export interface QuestionnaireResult {
-  task_id: number;
+  task_key: TaskKey;
   task_label: string;
   participant_name: string;
   timed: boolean;
   time_limit_s: number | null;
   timing: TimingBlock;
   status: TaskStatus;
-  hr: HrSnapshot;
+  sensors: SensorSnapshot;
   n_answered: number;
   n_items: number;
   file_name: string;
 }
 
-/** Email-classification task result (tasks 3 & 6). */
+/** Email-classification task result (Email Sorting A & B). */
 export interface EmailClassificationResult {
-  task_id: 3 | 6;
+  task_key: TaskKey;
   participant_name: string;
   timed: boolean;
   time_limit_s: number | null;
   timing: TimingBlock;
   status: TaskStatus;
-  hr: HrSnapshot;
+  sensors: SensorSnapshot;
   n_emails: number;
   n_answered: number;
   n_correct: number;
@@ -108,20 +119,88 @@ export interface EmailClassificationResult {
   file_name: string;
 }
 
+/**
+ * Content-based task identifiers. The session order is a list of these,
+ * which the operator arranges on the Setup screen. Baseline start/end are
+ * always first/last respectively.
+ */
+export type TaskKey =
+  | "baseline_start"
+  | "baseline_end"
+  | "pact"
+  | "aes_avatar"
+  | "aes_text"
+  | "travel_card_a"
+  | "travel_card_b"
+  | "email_sorting_a"
+  | "email_sorting_b"
+  | "form_entry_1"
+  | "form_entry_2";
+
+/** Human-readable label for a task. */
+export const TASK_LABEL: Record<TaskKey, string> = {
+  baseline_start: "Baseline (Start)",
+  baseline_end: "Baseline (End)",
+  pact: "PACT",
+  aes_avatar: "AES — Avatar version",
+  aes_text: "AES — Text version",
+  travel_card_a: "Travel Card A",
+  travel_card_b: "Travel Card B",
+  email_sorting_a: "Email Sorting A",
+  email_sorting_b: "Email Sorting B",
+  form_entry_1: "Form Entry 1",
+  form_entry_2: "Form Entry 2",
+};
+
+/** URL route for a task. */
+export const TASK_ROUTE: Record<TaskKey, string> = {
+  baseline_start: "/baseline/start",
+  baseline_end: "/baseline/end",
+  pact: "/pact",
+  aes_avatar: "/aes-avatar",
+  aes_text: "/aes-text",
+  travel_card_a: "/travel-card-a",
+  travel_card_b: "/travel-card-b",
+  email_sorting_a: "/email-sorting-a",
+  email_sorting_b: "/email-sorting-b",
+  form_entry_1: "/form-entry-1",
+  form_entry_2: "/form-entry-2",
+};
+
+/** Excel-file segment for a task — used in the downloaded file name. */
+export const TASK_FILE_SEG: Record<TaskKey, string> = {
+  baseline_start: "BaselineStart",
+  baseline_end: "BaselineEnd",
+  pact: "PACT",
+  aes_avatar: "AESAvatar",
+  aes_text: "AESText",
+  travel_card_a: "TravelCardA",
+  travel_card_b: "TravelCardB",
+  email_sorting_a: "EmailSortingA",
+  email_sorting_b: "EmailSortingB",
+  form_entry_1: "FormEntry1",
+  form_entry_2: "FormEntry2",
+};
+
+/** The 9 "middle" tasks the operator can reorder. */
+export const REORDERABLE_TASKS: TaskKey[] = [
+  "aes_avatar",
+  "travel_card_a",
+  "travel_card_b",
+  "email_sorting_a",
+  "pact",
+  "form_entry_1",
+  "form_entry_2",
+  "email_sorting_b",
+  "aes_text",
+];
+
 export interface ParticipantSession {
   participant_name: string;
   created_iso: string;
-  baseline_start: BaselineResult | null;
-  aes_avatar: AesResult | null;
-  task1: QuestionnaireResult | null;
-  task2: QuestionnaireResult | null;
-  task3: EmailClassificationResult | null;
-  pact: PactResult | null;
-  task4: QuestionnaireResult | null;
-  task5: QuestionnaireResult | null;
-  task6: EmailClassificationResult | null;
-  aes_text: AesResult | null;
-  baseline_end: BaselineResult | null;
+  /** Operator-chosen order of the 9 middle tasks; baseline_start at index 0 and baseline_end at the end are implicit. */
+  session_order: TaskKey[];
+  results: Partial<Record<TaskKey, BaselineResult | PactResult | AesResult | QuestionnaireResult | EmailClassificationResult>>;
 }
 
 const KEY_CURRENT = "pact_app.current_participant";
@@ -130,17 +209,8 @@ const KEY_ALL = "pact_app.sessions";
 const emptySession = (name: string): ParticipantSession => ({
   participant_name: name,
   created_iso: new Date().toISOString(),
-  baseline_start: null,
-  aes_avatar: null,
-  task1: null,
-  task2: null,
-  task3: null,
-  pact: null,
-  task4: null,
-  task5: null,
-  task6: null,
-  aes_text: null,
-  baseline_end: null,
+  session_order: REORDERABLE_TASKS.slice(),
+  results: {},
 });
 
 export const setCurrentParticipant = (name: string): void => {
@@ -184,52 +254,48 @@ export const getSession = (name: string): ParticipantSession | null => {
   return all[name] ?? null;
 };
 
-const upsert = <K extends keyof ParticipantSession>(
-  name: string,
-  field: K,
-  value: ParticipantSession[K],
-): void => {
+export const setSessionOrder = (name: string, order: TaskKey[]): void => {
   const all = loadAll();
   if (!all[name]) all[name] = emptySession(name);
-  all[name][field] = value;
+  all[name].session_order = order;
   saveAll(all);
 };
 
-export const upsertBaseline = (
-  name: string,
-  phase: "start" | "end",
-  result: BaselineResult,
-): void => {
-  upsert(name, phase === "start" ? "baseline_start" : "baseline_end", result);
+export const getSessionOrder = (name: string): TaskKey[] => {
+  const s = getSession(name);
+  return s?.session_order ?? REORDERABLE_TASKS.slice();
 };
 
-export const upsertPact = (name: string, result: PactResult): void =>
-  upsert(name, "pact", result);
-
-export const upsertAes = (
+/** Save a per-task result keyed by content. */
+export const saveTaskResult = <T extends BaselineResult | PactResult | AesResult | QuestionnaireResult | EmailClassificationResult>(
   name: string,
-  variant: "avatar" | "text",
-  result: AesResult,
+  key: TaskKey,
+  result: T,
 ): void => {
-  upsert(name, variant === "avatar" ? "aes_avatar" : "aes_text", result);
+  const all = loadAll();
+  if (!all[name]) all[name] = emptySession(name);
+  all[name].results = { ...all[name].results, [key]: result };
+  saveAll(all);
 };
 
-export const upsertQuestionnaire = (
-  name: string,
-  taskId: 1 | 2 | 4 | 5,
-  result: QuestionnaireResult,
-): void => {
-  const field = `task${taskId}` as const;
-  upsert(name, field, result);
+/** Compute the next route after the given task, based on the participant's session order. */
+export const nextRouteAfter = (name: string, current: TaskKey): string => {
+  if (current === "baseline_end") return "/admin";
+  if (current === "baseline_start") {
+    const order = getSessionOrder(name);
+    return order.length ? TASK_ROUTE[order[0]] : TASK_ROUTE.baseline_end;
+  }
+  const order = getSessionOrder(name);
+  const i = order.indexOf(current);
+  if (i === -1) return "/admin"; // task not in order, just bail to admin
+  if (i === order.length - 1) return TASK_ROUTE.baseline_end;
+  return TASK_ROUTE[order[i + 1]];
 };
 
-export const upsertEmailTask = (
-  name: string,
-  taskId: 3 | 6,
-  result: EmailClassificationResult,
-): void => {
-  const field = `task${taskId}` as const;
-  upsert(name, field, result);
+export const nextLabelAfter = (name: string, current: TaskKey): string => {
+  const route = nextRouteAfter(name, current);
+  const entry = (Object.entries(TASK_ROUTE) as [TaskKey, string][]).find(([, r]) => r === route);
+  return entry ? TASK_LABEL[entry[0]] : "Admin";
 };
 
 export const deleteSession = (name: string): void => {

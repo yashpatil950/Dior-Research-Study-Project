@@ -244,6 +244,109 @@ h2 { font-size: 26px; }
   border-color: #a93226;
 }
 
+/* ---- Large circular countdown timer ---- */
+.circ-countdown {
+  position: fixed;
+  top: 78px;
+  right: 24px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 18px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.14);
+  border: 1px solid #e5e7eb;
+  /* keep it fully on-screen even with the topbar above */
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 100px);
+}
+.circ-countdown.urgent {
+  border-color: #c0392b;
+  box-shadow: 0 8px 24px rgba(192,57,43,0.35);
+  animation: circ-pulse 1s ease-in-out infinite;
+}
+@keyframes circ-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.03); }
+}
+.circ-stop-btn {
+  background: #e67e22;
+  color: #fff;
+  border: none;
+  padding: 7px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.circ-stop-btn:hover { background: #b9651a; }
+
+/* ---- Session-setup order list ---- */
+.order-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  margin: 8px 0;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 18px;
+}
+.order-row > span:first-child {
+  width: 32px;
+  font-weight: 700;
+  color: #2c7ed1;
+}
+.order-row .order-label { flex: 1; font-weight: 500; }
+.order-row .order-controls { display: flex; gap: 6px; }
+.order-row .order-controls button {
+  padding: 6px 12px;
+  font-size: 16px;
+}
+.order-row.fixed-row {
+  background: #f5f5f5;
+  color: #777;
+  font-style: italic;
+}
+
+/* ---- Admin collapsible cards ---- */
+.participant-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 6px 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.participant-header .caret {
+  font-size: 16px;
+  color: #6c757d;
+  width: 18px;
+}
+.participant-header h3 {
+  margin: 0;
+  flex: 1;
+  font-size: 20px;
+  color: #2c3e50;
+}
+.participant-body { margin-top: 12px; }
+.result-section { margin-top: 14px; }
+.result-section h4 {
+  margin: 14px 0 4px 0;
+  font-size: 17px;
+  color: #2c3e50;
+  border-left: 4px solid #2c7ed1;
+  padding-left: 10px;
+}
+
 .stim-area {
   display: flex;
   align-items: center;

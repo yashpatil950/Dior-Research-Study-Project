@@ -20,15 +20,15 @@ export const LoginPage = () => {
       return;
     }
     setCurrentParticipant(trimmed);
-    navigate("/baseline/start");
+    navigate("/session-setup");
   };
 
   return (
     <div className="screen">
       <h1>Participant Sign-In</h1>
       <p>
-        Enter the participant's name to begin. The flow is:
-        <b> Baseline ▶ → AES Avatar → T1 → T2 → T3 → PACT → T4 → T5 → T6 → AES Text → Baseline ◀ → Admin.</b>
+        Enter the participant's name. You'll then be taken to the <b>Session Setup</b> page where
+        you can arrange the task order for this participant before starting Baseline (Start).
       </p>
 
       <ConnectionGate />

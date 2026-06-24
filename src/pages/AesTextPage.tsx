@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ConnectionGate } from "../components/ConnectionGate";
-import { TaskSetup } from "../components/TaskSetup";
-import { TaskTimerOverlay } from "../components/TaskTimerOverlay";
+import { useConnectionState } from "../hooks/useSensors";
 import { useTaskTiming } from "../hooks/useTaskTiming";
 import {
   AES_CHOICES,
@@ -12,27 +11,39 @@ import {
   buildAesResponse,
   type AesResponse,
 } from "../lib/aes";
-import { getCurrentParticipant, safeFileSegment, upsertAes, type AesResult } from "../lib/store";
+import {
+  getCurrentParticipant,
+  safeFileSegment,
+  saveTaskResult,
+  nextRouteAfter,
+  nextLabelAfter,
+  TASK_FILE_SEG,
+  TASK_LABEL,
+  type AesResult,
+} from "../lib/store";
 import { writeWorkbook } from "../lib/excel";
-import { isEmotiBitHrSample } from "../lib/sensors";
+import { isEmotiBitHrSample, isEmotiBitEdaSample } from "../lib/sensors";
 
 export const AesTextPage = () => {
   const navigate = useNavigate();
   const participant = getCurrentParticipant() ?? "";
-  const timing = useTaskTiming(600);
+  const connection = useConnectionState();
+  const bothConnected = connection.emotibit === "connected" && connection.mouse === "connected";
+  // AES is *always* untimed.
+  const timing = useTaskTiming(0, { alwaysUntimed: true });
 
+  const [stage, setStage] = useState<"ready" | "running" | "finished">("ready");
   const [idx, setIdx] = useState(0);
   const [responses, setResponses] = useState<Array<AesResponse | null>>(
     () => Array(AES_QUESTIONS.length).fill(null),
   );
   const [finalResult, setFinalResult] = useState<AesResult | null>(null);
 
-  useEffect(() => {
-    if (timing.phase !== "running") return;
-    if (timing.secondsLeft !== null && timing.secondsLeft <= 0) {
-      doFinalize("time_expired");
-    }
-  }, [timing.phase, timing.secondsLeft]);
+  const onBegin = () => {
+    if (!bothConnected) return;
+    setStage("running");
+    timing.startTask();
+  };
 
   const selectAnswer = (choiceIndex: number) => {
     setResponses((cur) => {
@@ -48,7 +59,7 @@ export const AesTextPage = () => {
       return;
     }
     if (idx === AES_QUESTIONS.length - 1) {
-      doFinalize(timing.timed ? "completed" : "non_timed_completed");
+      doFinalize("non_timed_completed");
       return;
     }
     setIdx(idx + 1);
@@ -58,12 +69,12 @@ export const AesTextPage = () => {
 
   const onStopEarly = () => {
     if (!confirm("End AES Text now and save?")) return;
-    doFinalize(timing.timed ? "stopped_early" : "non_timed_completed");
+    doFinalize("stopped_early");
   };
 
   const doFinalize = (status: AesResult["status"]) => {
     const f = timing.finalize(status);
-    const fileName = `${safeFileSegment(participant)}_AES_Text_data.xlsx`;
+    const fileName = `${safeFileSegment(participant)}_${TASK_FILE_SEG.aes_text}_data.xlsx`;
 
     const nAnswered = responses.filter((r) => r !== null).length;
     const totalScore = aesTotalScore(responses);
@@ -82,8 +93,6 @@ export const AesTextPage = () => {
     const summary = [{
       participant,
       variant: "text",
-      timed: f.timed,
-      time_limit_s: f.time_limit_s ?? "",
       status: f.status,
       start_iso: f.timing.start_iso,
       end_iso: f.timing.end_iso,
@@ -96,10 +105,18 @@ export const AesTextPage = () => {
       possible_range: "18–72",
       apathy_threshold: 42,
       interpretation,
-      mouse_hr_avg: f.hr.mouse_hr_avg ?? "",
-      mouse_hr_n_samples: f.hr.mouse_hr_n_samples,
-      emotibit_hr_avg: f.hr.emotibit_hr_avg ?? "",
-      emotibit_hr_n_samples: f.hr.emotibit_hr_n_samples,
+      mouse_hr_avg: f.sensors.mouse_hr_avg ?? "",
+      mouse_hr_n_samples: f.sensors.mouse_hr_n_samples,
+      mouse_hr_avg_last60s: f.sensors.mouse_hr_avg_last60s ?? "",
+      mouse_hr_n_samples_last60s: f.sensors.mouse_hr_n_samples_last60s,
+      emotibit_hr_avg: f.sensors.emotibit_hr_avg ?? "",
+      emotibit_hr_n_samples: f.sensors.emotibit_hr_n_samples,
+      emotibit_hr_avg_last60s: f.sensors.emotibit_hr_avg_last60s ?? "",
+      emotibit_hr_n_samples_last60s: f.sensors.emotibit_hr_n_samples_last60s,
+      emotibit_eda_avg: f.sensors.emotibit_eda_avg ?? "",
+      emotibit_eda_n_samples: f.sensors.emotibit_eda_n_samples,
+      emotibit_eda_avg_last60s: f.sensors.emotibit_eda_avg_last60s ?? "",
+      emotibit_eda_n_samples_last60s: f.sensors.emotibit_eda_n_samples_last60s,
     }];
 
     writeWorkbook(fileName, {
@@ -111,48 +128,56 @@ export const AesTextPage = () => {
       emotibit_hr: f.emotibit_samples.filter(isEmotiBitHrSample).map((s) => ({
         ts_iso: s.ts_iso, unix_ms: s.unix_ms, stream_tag: s.stream_tag, value: s.value, reliability: s.reliability,
       })),
+      emotibit_eda: f.emotibit_samples.filter(isEmotiBitEdaSample).map((s) => ({
+        ts_iso: s.ts_iso, unix_ms: s.unix_ms, stream_tag: s.stream_tag, value: s.value, reliability: s.reliability,
+      })),
     });
 
     const result: AesResult = {
       variant: "text",
       participant_name: participant,
-      timed: f.timed,
-      time_limit_s: f.time_limit_s,
       timing: f.timing,
       status: f.status,
-      hr: f.hr,
+      sensors: f.sensors,
       n_answered: nAnswered,
       n_items: AES_QUESTIONS.length,
       total_score: totalScore,
       interpretation,
       file_name: fileName,
     };
-    upsertAes(participant, "text", result);
+    saveTaskResult(participant, "aes_text", result);
     setFinalResult(result);
+    setStage("finished");
   };
 
-  if (timing.phase === "setup") {
+  if (stage === "ready") {
     return (
-      <TaskSetup
-        title="AES — Text version"
-        description={
+      <div className="screen">
+        <h1>{TASK_LABEL.aes_text}</h1>
+        <ConnectionGate />
+        <div className="instructions">
           <p>
             18 statements about your thoughts, feelings, and activity in the past 4 weeks.
             Pick the option (NOT AT ALL → A LOT) that best describes you for each.
+            This task is <b>untimed</b>.
           </p>
-        }
-        defaultDurationS={600}
-        timed={timing.timed}
-        durationS={timing.durationS}
-        onTimedChange={timing.setTimed}
-        onDurationChange={timing.setDurationS}
-        onStart={timing.startTask}
-        startLabel="Start AES Text"
-      />
+          <button
+            className="btn btn-success"
+            disabled={!bothConnected}
+            onClick={onBegin}
+            title={!bothConnected ? "Both sensors must be connected" : ""}
+          >
+            ▶ Start AES Text
+          </button>
+          {!bothConnected && (
+            <p className="error-msg">Both sensors must be connected before starting.</p>
+          )}
+        </div>
+      </div>
     );
   }
 
-  if (timing.phase === "done" && finalResult) {
+  if (stage === "finished" && finalResult) {
     return (
       <div className="screen">
         <h1>AES Text Complete</h1>
@@ -165,12 +190,13 @@ export const AesTextPage = () => {
               <tr><th>Total score</th><td>{finalResult.total_score}</td></tr>
               <tr><th>Interpretation</th><td>{finalResult.interpretation}</td></tr>
               <tr><th>Total time</th><td>{(finalResult.timing.total_ms / 1000).toFixed(1)} s</td></tr>
-              <tr><th>EmotiBit avg HR</th><td>{finalResult.hr.emotibit_hr_avg ?? "—"} bpm</td></tr>
-              <tr><th>Mouse avg HR</th><td>{finalResult.hr.mouse_hr_avg ?? "—"} bpm</td></tr>
+              <tr><th>EmotiBit HR (full / last-60s)</th><td>{finalResult.sensors.emotibit_hr_avg ?? "—"} / {finalResult.sensors.emotibit_hr_avg_last60s ?? "—"} bpm</td></tr>
+              <tr><th>Mouse HR (full / last-60s)</th><td>{finalResult.sensors.mouse_hr_avg ?? "—"} / {finalResult.sensors.mouse_hr_avg_last60s ?? "—"} bpm</td></tr>
+              <tr><th>EmotiBit EDA (full / last-60s)</th><td>{finalResult.sensors.emotibit_eda_avg ?? "—"} / {finalResult.sensors.emotibit_eda_avg_last60s ?? "—"}</td></tr>
             </tbody>
           </table>
-          <button className="btn btn-success" onClick={() => navigate("/baseline/end")}>
-            Continue → Baseline (end)
+          <button className="btn btn-success" onClick={() => navigate(nextRouteAfter(participant, "aes_text"))}>
+            Continue → {nextLabelAfter(participant, "aes_text")}
           </button>
         </div>
       </div>
@@ -180,10 +206,10 @@ export const AesTextPage = () => {
   return (
     <div className="screen">
       <ConnectionGate />
-      {timing.timed && (
-        <TaskTimerOverlay secondsLeft={timing.secondsLeft} onStopEarly={onStopEarly} />
-      )}
-      <h1 className="center">AES — Text version</h1>
+      <div style={{ position: "fixed", top: 80, right: 20 }}>
+        <button className="btn btn-warn" onClick={onStopEarly}>End early &amp; save</button>
+      </div>
+      <h1 className="center">{TASK_LABEL.aes_text}</h1>
       <div className="aes-progress">Question {idx + 1} of {AES_QUESTIONS.length}</div>
 
       <div className="aes-text-prompt">{AES_QUESTIONS[idx]}</div>

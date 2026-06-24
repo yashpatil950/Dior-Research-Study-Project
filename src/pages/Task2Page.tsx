@@ -9,15 +9,12 @@ const StoryCard = () => (
   </div>
 );
 
-export const Task2Page = () => (
+export const TravelCardBPage = () => (
   <QuestionnaireTaskPage
-    taskId={2}
-    label="Invoice Approval"
+    taskKey="travel_card_b"
     description={<p>Read the invoice details on the story card and fill in the approval form.</p>}
     storyCard={<StoryCard />}
     questions={TASK2_QUESTIONS}
     defaultDurationS={300}
-    nextRoute="/task/3"
-    nextRouteLabel="Task 3"
   />
 );

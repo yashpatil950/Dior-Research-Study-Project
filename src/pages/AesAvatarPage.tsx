@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ConnectionGate } from "../components/ConnectionGate";
-import { TaskSetup } from "../components/TaskSetup";
-import { TaskTimerOverlay } from "../components/TaskTimerOverlay";
+import { useConnectionState } from "../hooks/useSensors";
 import { useTaskTiming } from "../hooks/useTaskTiming";
 import {
   AES_CHOICES,
@@ -12,9 +11,18 @@ import {
   buildAesResponse,
   type AesResponse,
 } from "../lib/aes";
-import { getCurrentParticipant, safeFileSegment, upsertAes, type AesResult } from "../lib/store";
+import {
+  getCurrentParticipant,
+  safeFileSegment,
+  saveTaskResult,
+  nextRouteAfter,
+  nextLabelAfter,
+  TASK_FILE_SEG,
+  TASK_LABEL,
+  type AesResult,
+} from "../lib/store";
 import { writeWorkbook } from "../lib/excel";
-import { isEmotiBitHrSample } from "../lib/sensors";
+import { isEmotiBitHrSample, isEmotiBitEdaSample } from "../lib/sensors";
 
 const WELCOME_VIDEO = "/aes-videos/welcome.mp4";
 const END_VIDEO = "/aes-videos/end.mp4";
@@ -25,9 +33,12 @@ const TASK_VIDEOS = Array.from({ length: 18 }, (_, i) =>
 export const AesAvatarPage = () => {
   const navigate = useNavigate();
   const participant = getCurrentParticipant() ?? "";
-  const timing = useTaskTiming(900); // 15 min default — plenty for 18 video items
+  const connection = useConnectionState();
+  const bothConnected = connection.emotibit === "connected" && connection.mouse === "connected";
+  // AES is *always* untimed.
+  const timing = useTaskTiming(0, { alwaysUntimed: true });
 
-  const [stage, setStage] = useState<"intro" | "trial" | "finished">("intro");
+  const [stage, setStage] = useState<"ready" | "intro" | "trial" | "finished">("ready");
   const [idx, setIdx] = useState(0);
   const [responses, setResponses] = useState<Array<AesResponse | null>>(
     () => Array(TASK_VIDEOS.length).fill(null),
@@ -36,24 +47,21 @@ export const AesAvatarPage = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [finalResult, setFinalResult] = useState<AesResult | null>(null);
 
-  // Auto-finalize when the deadline passes.
-  useEffect(() => {
-    if (timing.phase !== "running") return;
-    if (timing.secondsLeft !== null && timing.secondsLeft <= 0) {
-      doFinalize("time_expired");
-    }
-  }, [timing.phase, timing.secondsLeft]);
-
   // Load welcome video as soon as the task starts running.
   useEffect(() => {
-    if (timing.phase !== "running") return;
-    if (stage !== "intro") return;
+    if (timing.phase !== "running" || stage !== "intro") return;
     if (videoRef.current) {
       videoRef.current.src = WELCOME_VIDEO;
       videoRef.current.muted = true;
       videoRef.current.play().catch(() => {});
     }
   }, [timing.phase, stage]);
+
+  const onBegin = () => {
+    if (!bothConnected) return;
+    setStage("intro");
+    timing.startTask();
+  };
 
   const startTrials = () => {
     setStage("trial");
@@ -80,7 +88,6 @@ export const AesAvatarPage = () => {
       return;
     }
     if (idx === TASK_VIDEOS.length - 1) {
-      // finish naturally
       finishToEnd();
       return;
     }
@@ -128,17 +135,17 @@ export const AesAvatarPage = () => {
       videoRef.current.play().catch(() => {});
     }
     setStage("finished");
-    doFinalize("completed");
+    doFinalize("non_timed_completed");
   };
 
   const onStopEarly = () => {
     if (!confirm("End AES Avatar now and save?")) return;
-    doFinalize(timing.timed ? "stopped_early" : "non_timed_completed");
+    doFinalize("stopped_early");
   };
 
   const doFinalize = (status: AesResult["status"]) => {
     const f = timing.finalize(status);
-    const fileName = `${safeFileSegment(participant)}_AES_Avatar_data.xlsx`;
+    const fileName = `${safeFileSegment(participant)}_${TASK_FILE_SEG.aes_avatar}_data.xlsx`;
 
     const nAnswered = responses.filter((r) => r !== null).length;
     const totalScore = aesTotalScore(responses);
@@ -158,8 +165,6 @@ export const AesAvatarPage = () => {
     const summary = [{
       participant,
       variant: "avatar",
-      timed: f.timed,
-      time_limit_s: f.time_limit_s ?? "",
       status: f.status,
       start_iso: f.timing.start_iso,
       end_iso: f.timing.end_iso,
@@ -172,10 +177,18 @@ export const AesAvatarPage = () => {
       possible_range: "18–72",
       apathy_threshold: 42,
       interpretation,
-      mouse_hr_avg: f.hr.mouse_hr_avg ?? "",
-      mouse_hr_n_samples: f.hr.mouse_hr_n_samples,
-      emotibit_hr_avg: f.hr.emotibit_hr_avg ?? "",
-      emotibit_hr_n_samples: f.hr.emotibit_hr_n_samples,
+      mouse_hr_avg: f.sensors.mouse_hr_avg ?? "",
+      mouse_hr_n_samples: f.sensors.mouse_hr_n_samples,
+      mouse_hr_avg_last60s: f.sensors.mouse_hr_avg_last60s ?? "",
+      mouse_hr_n_samples_last60s: f.sensors.mouse_hr_n_samples_last60s,
+      emotibit_hr_avg: f.sensors.emotibit_hr_avg ?? "",
+      emotibit_hr_n_samples: f.sensors.emotibit_hr_n_samples,
+      emotibit_hr_avg_last60s: f.sensors.emotibit_hr_avg_last60s ?? "",
+      emotibit_hr_n_samples_last60s: f.sensors.emotibit_hr_n_samples_last60s,
+      emotibit_eda_avg: f.sensors.emotibit_eda_avg ?? "",
+      emotibit_eda_n_samples: f.sensors.emotibit_eda_n_samples,
+      emotibit_eda_avg_last60s: f.sensors.emotibit_eda_avg_last60s ?? "",
+      emotibit_eda_n_samples_last60s: f.sensors.emotibit_eda_n_samples_last60s,
     }];
 
     writeWorkbook(fileName, {
@@ -187,71 +200,74 @@ export const AesAvatarPage = () => {
       emotibit_hr: f.emotibit_samples.filter(isEmotiBitHrSample).map((s) => ({
         ts_iso: s.ts_iso, unix_ms: s.unix_ms, stream_tag: s.stream_tag, value: s.value, reliability: s.reliability,
       })),
+      emotibit_eda: f.emotibit_samples.filter(isEmotiBitEdaSample).map((s) => ({
+        ts_iso: s.ts_iso, unix_ms: s.unix_ms, stream_tag: s.stream_tag, value: s.value, reliability: s.reliability,
+      })),
     });
 
     const result: AesResult = {
       variant: "avatar",
       participant_name: participant,
-      timed: f.timed,
-      time_limit_s: f.time_limit_s,
       timing: f.timing,
       status: f.status,
-      hr: f.hr,
+      sensors: f.sensors,
       n_answered: nAnswered,
       n_items: TASK_VIDEOS.length,
       total_score: totalScore,
       interpretation,
       file_name: fileName,
     };
-    upsertAes(participant, "avatar", result);
+    saveTaskResult(participant, "aes_avatar", result);
     setFinalResult(result);
     setStage("finished");
   };
 
-  if (timing.phase === "setup") {
+  if (stage === "ready") {
     return (
-      <TaskSetup
-        title="AES — Avatar version"
-        description={
+      <div className="screen">
+        <h1>{TASK_LABEL.aes_avatar}</h1>
+        <ConnectionGate />
+        <div className="instructions">
           <p>
             A digital avatar will ask 18 questions. Click the video to enable audio if prompted.
-            Choose one of four responses (NOT AT ALL → A LOT) for each.
+            Choose one of four responses (NOT AT ALL → A LOT) for each. This task is <b>untimed</b>.
           </p>
-        }
-        defaultDurationS={900}
-        timed={timing.timed}
-        durationS={timing.durationS}
-        onTimedChange={timing.setTimed}
-        onDurationChange={timing.setDurationS}
-        onStart={timing.startTask}
-        startLabel="Start AES Avatar"
-      />
+          <button
+            className="btn btn-success"
+            disabled={!bothConnected}
+            onClick={onBegin}
+            title={!bothConnected ? "Both sensors must be connected" : ""}
+          >
+            ▶ Start AES Avatar
+          </button>
+          {!bothConnected && (
+            <p className="error-msg">Both sensors must be connected before starting.</p>
+          )}
+        </div>
+      </div>
     );
   }
 
-  if (timing.phase === "done" || stage === "finished") {
+  if (stage === "finished" && finalResult) {
     return (
       <div className="screen">
         <h1>AES Avatar Complete</h1>
         <div className="instructions">
-          {finalResult && (
-            <>
-              <p>Data downloaded as <code>{finalResult.file_name}</code>.</p>
-              <table className="summary-table">
-                <tbody>
-                  <tr><th>Status</th><td>{finalResult.status}</td></tr>
-                  <tr><th>Answered</th><td>{finalResult.n_answered} / {finalResult.n_items}</td></tr>
-                  <tr><th>Total score</th><td>{finalResult.total_score}</td></tr>
-                  <tr><th>Interpretation</th><td>{finalResult.interpretation}</td></tr>
-                  <tr><th>Total time</th><td>{(finalResult.timing.total_ms / 1000).toFixed(1)} s</td></tr>
-                  <tr><th>EmotiBit avg HR</th><td>{finalResult.hr.emotibit_hr_avg ?? "—"} bpm</td></tr>
-                  <tr><th>Mouse avg HR</th><td>{finalResult.hr.mouse_hr_avg ?? "—"} bpm</td></tr>
-                </tbody>
-              </table>
-            </>
-          )}
-          <button className="btn btn-success" onClick={() => navigate("/task/1")}>
-            Continue → Task 1
+          <p>Data downloaded as <code>{finalResult.file_name}</code>.</p>
+          <table className="summary-table">
+            <tbody>
+              <tr><th>Status</th><td>{finalResult.status}</td></tr>
+              <tr><th>Answered</th><td>{finalResult.n_answered} / {finalResult.n_items}</td></tr>
+              <tr><th>Total score</th><td>{finalResult.total_score}</td></tr>
+              <tr><th>Interpretation</th><td>{finalResult.interpretation}</td></tr>
+              <tr><th>Total time</th><td>{(finalResult.timing.total_ms / 1000).toFixed(1)} s</td></tr>
+              <tr><th>EmotiBit HR (full / last-60s)</th><td>{finalResult.sensors.emotibit_hr_avg ?? "—"} / {finalResult.sensors.emotibit_hr_avg_last60s ?? "—"} bpm</td></tr>
+              <tr><th>Mouse HR (full / last-60s)</th><td>{finalResult.sensors.mouse_hr_avg ?? "—"} / {finalResult.sensors.mouse_hr_avg_last60s ?? "—"} bpm</td></tr>
+              <tr><th>EmotiBit EDA (full / last-60s)</th><td>{finalResult.sensors.emotibit_eda_avg ?? "—"} / {finalResult.sensors.emotibit_eda_avg_last60s ?? "—"}</td></tr>
+            </tbody>
+          </table>
+          <button className="btn btn-success" onClick={() => navigate(nextRouteAfter(participant, "aes_avatar"))}>
+            Continue → {nextLabelAfter(participant, "aes_avatar")}
           </button>
         </div>
       </div>
@@ -261,11 +277,11 @@ export const AesAvatarPage = () => {
   return (
     <div className="screen">
       <ConnectionGate />
-      {timing.timed && (
-        <TaskTimerOverlay secondsLeft={timing.secondsLeft} onStopEarly={onStopEarly} />
-      )}
+      <div style={{ position: "fixed", top: 80, right: 20 }}>
+        <button className="btn btn-warn" onClick={onStopEarly}>End early &amp; save</button>
+      </div>
 
-      <h1 className="center">AES — Avatar version</h1>
+      <h1 className="center">{TASK_LABEL.aes_avatar}</h1>
       <div className="aes-progress">
         {stage === "intro" ? "Welcome" : `Question ${idx + 1} of ${TASK_VIDEOS.length}`}
       </div>

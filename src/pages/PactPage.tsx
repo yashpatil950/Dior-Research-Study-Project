@@ -6,16 +6,22 @@ import { useGlobalKeys } from "../hooks/useGlobalKeys";
 import {
   sensors,
   isEmotiBitHrSample,
+  isEmotiBitEdaSample,
   type MouseBioMetricsSample,
   type EmotiBitSample,
 } from "../lib/sensors";
 import {
   getCurrentParticipant,
   safeFileSegment,
-  upsertPact,
+  saveTaskResult,
+  nextRouteAfter,
+  nextLabelAfter,
+  TASK_FILE_SEG,
   type PactResult,
+  type SensorSnapshot,
 } from "../lib/store";
 import { writeWorkbook } from "../lib/excel";
+import { CircularCountdown } from "../components/CircularCountdown";
 import {
   meanOf,
   runBlock,
@@ -45,6 +51,13 @@ const DEFAULT_CONFIG = {
   timeLimitS: 300, // 5 minutes total for the recorded blocks combined
 };
 
+const LAST_WINDOW_MS = 60 * 1000;
+
+interface TimedSample { value: number; unix_ms: number; }
+
+const computeAvg = (xs: number[]): number | null =>
+  xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : null;
+
 export const PactPage = () => {
   const navigate = useNavigate();
   const participant = getCurrentParticipant() ?? "";
@@ -55,31 +68,27 @@ export const PactPage = () => {
   const [screen, setScreen] = useState<Screen>("setup");
   const [config, setConfig] = useState(DEFAULT_CONFIG);
 
-  // Trial-loop UI state
   const [stim, setStim] = useState<TrialView>({ kind: "blank" });
   const [instructionHtml, setInstructionHtml] = useState("");
   const [progress, setProgress] = useState("");
 
-  // Countdown timer (drives both the on-screen display and the deadline check)
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const deadlineRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Heart-rate buffers populated only during the recorded blocks
-  const mouseHrBufRef = useRef<number[]>([]);
-  const emotiHrBufRef = useRef<number[]>([]);
   const mouseSamplesRef = useRef<MouseBioMetricsSample[]>([]);
   const emotiSamplesRef = useRef<EmotiBitSample[]>([]);
+  const mouseHrBufRef = useRef<TimedSample[]>([]);
+  const emotiHrBufRef = useRef<TimedSample[]>([]);
+  const emotiEdaBufRef = useRef<TimedSample[]>([]);
   const hrUnsubsRef = useRef<(() => void)[]>([]);
 
-  // Timing + trial accumulators
   const recordedStartRef = useRef<{ iso: string; unix: number } | null>(null);
   const recordedEndRef = useRef<{ iso: string; unix: number } | null>(null);
   const trialDataRef = useRef<TrialRecord[]>([]);
   const initCompletedRef = useRef(0);
   const planCompletedRef = useRef(0);
 
-  // AbortController for the active trial-loop
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => () => {
@@ -88,29 +97,33 @@ export const PactPage = () => {
     if (timerRef.current) clearInterval(timerRef.current);
   }, []);
 
-  const startHrCapture = () => {
+  const startSensorCapture = () => {
     mouseHrBufRef.current = [];
     emotiHrBufRef.current = [];
+    emotiEdaBufRef.current = [];
     mouseSamplesRef.current = [];
     emotiSamplesRef.current = [];
     hrUnsubsRef.current.push(
       sensors.onMouseSample((s) => {
         mouseSamplesRef.current.push(s);
         if (typeof s.heartRate === "number" && Number.isFinite(s.heartRate) && s.heartRate > 0) {
-          mouseHrBufRef.current.push(s.heartRate);
+          mouseHrBufRef.current.push({ value: s.heartRate, unix_ms: s.unix_ms });
         }
       }),
       sensors.onEmotiBitSample((s) => {
         emotiSamplesRef.current.push(s);
         if (isEmotiBitHrSample(s)) {
           const v = typeof s.value === "number" ? s.value : Number(s.value);
-          if (Number.isFinite(v) && v > 0) emotiHrBufRef.current.push(v);
+          if (Number.isFinite(v) && v > 0) emotiHrBufRef.current.push({ value: v, unix_ms: s.unix_ms });
+        } else if (isEmotiBitEdaSample(s)) {
+          const v = typeof s.value === "number" ? s.value : Number(s.value);
+          if (Number.isFinite(v)) emotiEdaBufRef.current.push({ value: v, unix_ms: s.unix_ms });
         }
       }),
     );
   };
 
-  const stopHrCapture = () => {
+  const stopSensorCapture = () => {
     hrUnsubsRef.current.forEach((fn) => fn());
     hrUnsubsRef.current = [];
   };
@@ -133,7 +146,6 @@ export const PactPage = () => {
     setSecondsLeft(null);
   };
 
-  // Preload all stimulus images on mount so timing is consistent.
   useEffect(() => {
     const all = [INIT_STIM_FILE, ...PLANNING_STIMULI.map((s) => PLANNING_STIM_DIR + s.file)];
     for (const src of all) {
@@ -142,19 +154,14 @@ export const PactPage = () => {
     }
   }, []);
 
-  // ---- Block runners ----
   const runOneBlock = async (
     subtask: "initiation" | "planning",
     isPractice: boolean,
     nTrials: number,
   ) => {
     abortRef.current = new AbortController();
-    const ui = {
-      setStim,
-      setInstruction: setInstructionHtml,
-      setProgress,
-    };
-    const out = await runBlock({
+    const ui = { setStim, setInstruction: setInstructionHtml, setProgress };
+    return runBlock({
       participantId: participant,
       subtask,
       isPractice,
@@ -171,10 +178,8 @@ export const PactPage = () => {
         }
       },
     });
-    return out;
   };
 
-  // ---- Flow ----
   const onStartTask = () => {
     if (!bothConnected) return;
     trialDataRef.current = [];
@@ -193,9 +198,8 @@ export const PactPage = () => {
   };
 
   const onStartInitBlock = async () => {
-    // The recorded portion starts here — start HR capture + countdown timer.
     recordedStartRef.current = { iso: new Date().toISOString(), unix: Date.now() };
-    startHrCapture();
+    startSensorCapture();
     startCountdown(config.timeLimitS);
     setScreen("init-block");
     const out = await runOneBlock("initiation", false, config.initTrials);
@@ -204,9 +208,7 @@ export const PactPage = () => {
     setScreen("transition");
   };
 
-  const onStartPlanning = () => {
-    setScreen("plan-instructions");
-  };
+  const onStartPlanning = () => setScreen("plan-instructions");
 
   const onBeginPlanPractice = async () => {
     setScreen("plan-practice");
@@ -230,7 +232,7 @@ export const PactPage = () => {
   };
 
   const finalize = (status: PactResult["status"]) => {
-    stopHrCapture();
+    stopSensorCapture();
     stopCountdown();
     recordedEndRef.current = { iso: new Date().toISOString(), unix: Date.now() };
 
@@ -238,20 +240,41 @@ export const PactPage = () => {
     const planRows = trialDataRef.current.filter((r) => r.task === "planning" && r.is_practice === 0);
     const planCorrect = planRows.filter((r) => r.correct === 1);
 
-    const avg = (xs: number[]) => xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : null;
-    const mouseAvg = avg(mouseHrBufRef.current);
-    const emotiAvg = avg(emotiHrBufRef.current);
-
-    const fileName = `${safeFileSegment(participant)}_PACT_data.xlsx`;
-    const start = recordedStartRef.current!;
     const end = recordedEndRef.current!;
+    const start = recordedStartRef.current!;
+    const cutoff = end.unix - LAST_WINDOW_MS;
+
+    const sliceLast = (arr: TimedSample[]) => arr.filter((s) => s.unix_ms >= cutoff);
+    const mouseHr = mouseHrBufRef.current;
+    const emoHr = emotiHrBufRef.current;
+    const emoEda = emotiEdaBufRef.current;
+    const mouseHrL = sliceLast(mouseHr);
+    const emoHrL = sliceLast(emoHr);
+    const emoEdaL = sliceLast(emoEda);
+
+    const snap: SensorSnapshot = {
+      mouse_hr_avg: computeAvg(mouseHr.map((x) => x.value)),
+      mouse_hr_n_samples: mouseHr.length,
+      emotibit_hr_avg: computeAvg(emoHr.map((x) => x.value)),
+      emotibit_hr_n_samples: emoHr.length,
+      emotibit_eda_avg: computeAvg(emoEda.map((x) => x.value)),
+      emotibit_eda_n_samples: emoEda.length,
+      mouse_hr_avg_last60s: computeAvg(mouseHrL.map((x) => x.value)),
+      mouse_hr_n_samples_last60s: mouseHrL.length,
+      emotibit_hr_avg_last60s: computeAvg(emoHrL.map((x) => x.value)),
+      emotibit_hr_n_samples_last60s: emoHrL.length,
+      emotibit_eda_avg_last60s: computeAvg(emoEdaL.map((x) => x.value)),
+      emotibit_eda_n_samples_last60s: emoEdaL.length,
+    };
+
+    const fileName = `${safeFileSegment(participant)}_${TASK_FILE_SEG.pact}_data.xlsx`;
 
     const planAccuracyPct: number | "" = planRows.length
       ? Math.round((planCorrect.length / planRows.length) * 10000) / 100
       : "";
 
     const summary = {
-      participant: participant,
+      participant,
       time_limit_s: config.timeLimitS,
       status,
       start_iso: start.iso,
@@ -271,10 +294,18 @@ export const PactPage = () => {
       plan_mean_planning_rt_ms_correct: meanOf(planCorrect, "total_rt_ms"),
       plan_mean_movement_time_ms: meanOf(planRows, "movement_time_ms"),
       plan_mean_total_rt_ms: meanOf(planRows, "total_rt_ms"),
-      mouse_hr_avg: mouseAvg ?? "",
-      mouse_hr_n_samples: mouseHrBufRef.current.length,
-      emotibit_hr_avg: emotiAvg ?? "",
-      emotibit_hr_n_samples: emotiHrBufRef.current.length,
+      mouse_hr_avg: snap.mouse_hr_avg ?? "",
+      mouse_hr_n_samples: snap.mouse_hr_n_samples,
+      mouse_hr_avg_last60s: snap.mouse_hr_avg_last60s ?? "",
+      mouse_hr_n_samples_last60s: snap.mouse_hr_n_samples_last60s,
+      emotibit_hr_avg: snap.emotibit_hr_avg ?? "",
+      emotibit_hr_n_samples: snap.emotibit_hr_n_samples,
+      emotibit_hr_avg_last60s: snap.emotibit_hr_avg_last60s ?? "",
+      emotibit_hr_n_samples_last60s: snap.emotibit_hr_n_samples_last60s,
+      emotibit_eda_avg: snap.emotibit_eda_avg ?? "",
+      emotibit_eda_n_samples: snap.emotibit_eda_n_samples,
+      emotibit_eda_avg_last60s: snap.emotibit_eda_avg_last60s ?? "",
+      emotibit_eda_n_samples_last60s: snap.emotibit_eda_n_samples_last60s,
     };
 
     writeWorkbook(fileName, {
@@ -286,6 +317,9 @@ export const PactPage = () => {
         ts_iso: s.ts_iso, unix_ms: s.unix_ms, heartRate: s.heartRate ?? "", gsr: s.gsr ?? "",
       })),
       emotibit_hr: emotiSamplesRef.current.filter(isEmotiBitHrSample).map((s) => ({
+        ts_iso: s.ts_iso, unix_ms: s.unix_ms, stream_tag: s.stream_tag, value: s.value, reliability: s.reliability,
+      })),
+      emotibit_eda: emotiSamplesRef.current.filter(isEmotiBitEdaSample).map((s) => ({
         ts_iso: s.ts_iso, unix_ms: s.unix_ms, stream_tag: s.stream_tag, value: s.value, reliability: s.reliability,
       })),
     });
@@ -312,13 +346,10 @@ export const PactPage = () => {
       plan_mean_planning_rt_ms_correct: summary.plan_mean_planning_rt_ms_correct,
       plan_mean_movement_time_ms: summary.plan_mean_movement_time_ms,
       plan_mean_total_rt_ms: summary.plan_mean_total_rt_ms,
-      mouse_hr_avg: mouseAvg,
-      mouse_hr_n_samples: mouseHrBufRef.current.length,
-      emotibit_hr_avg: emotiAvg,
-      emotibit_hr_n_samples: emotiHrBufRef.current.length,
+      sensors: snap,
       file_name: fileName,
     };
-    upsertPact(participant, result);
+    saveTaskResult(participant, "pact", result);
     setScreen("end");
   };
 
@@ -337,7 +368,7 @@ export const PactPage = () => {
           <NumRow label="Time limit (seconds, total recorded)" value={config.timeLimitS} onChange={(v) => setConfig((c) => ({ ...c, timeLimitS: v }))} />
           <p className="hint">
             The timer counts down only during the <b>recorded</b> Initiation and Planning blocks
-            (practice is untimed). It turns red under 20 s; reaching 0 ends the task early.
+            (practice is untimed). It turns red under 30 s; reaching 0 ends the task early.
           </p>
           <div style={{ marginTop: 20 }}>
             <button
@@ -432,9 +463,9 @@ export const PactPage = () => {
       <div className="screen">
         <h1>PACT Complete</h1>
         <div className="instructions">
-          <p>Data downloaded as <code>{safeFileSegment(participant)}_PACT_data.xlsx</code>.</p>
-          <button className="btn btn-success" onClick={() => navigate("/task/4")}>
-            Continue → Task 4
+          <p>Data downloaded as <code>{safeFileSegment(participant)}_{TASK_FILE_SEG.pact}_data.xlsx</code>.</p>
+          <button className="btn btn-success" onClick={() => navigate(nextRouteAfter(participant, "pact"))}>
+            Continue → {nextLabelAfter(participant, "pact")}
           </button>
         </div>
       </div>
@@ -444,7 +475,6 @@ export const PactPage = () => {
   // ---- Trial screens ----
   const showRule = screen === "plan-practice" || screen === "plan-block";
   const showTimer = screen === "init-block" || screen === "plan-block";
-  const urgent = showTimer && secondsLeft !== null && secondsLeft < 20;
 
   return (
     <div className="trial-screen">
@@ -455,9 +485,11 @@ export const PactPage = () => {
         </div>
       )}
       {showTimer && secondsLeft !== null && (
-        <div className={`pact-timer ${urgent ? "urgent" : ""}`}>
-          ⏱ {formatMinSec(secondsLeft)}
-        </div>
+        <CircularCountdown
+          secondsLeft={secondsLeft}
+          totalSeconds={config.timeLimitS}
+          onStopEarly={onStopEarly}
+        />
       )}
       <div className="trial-progress">{progress}</div>
 
@@ -482,11 +514,6 @@ export const PactPage = () => {
         className="trial-instruction"
         dangerouslySetInnerHTML={{ __html: instructionHtml }}
       />
-      {showTimer && (
-        <div style={{ position: "fixed", bottom: 80, left: 0, right: 0, textAlign: "center" }}>
-          <button className="btn btn-warn" onClick={onStopEarly}>End early & save</button>
-        </div>
-      )}
     </div>
   );
 };
@@ -505,10 +532,3 @@ const NumRow = ({ label, value, onChange }: { label: string; value: number; onCh
     />
   </div>
 );
-
-const formatMinSec = (s: number): string => {
-  const total = Math.max(0, Math.ceil(s));
-  const m = Math.floor(total / 60);
-  const sec = total - m * 60;
-  return `${m}:${sec.toString().padStart(2, "0")}`;
-};

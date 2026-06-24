@@ -2,29 +2,32 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   sensors,
   isEmotiBitHrSample,
+  isEmotiBitEdaSample,
   type MouseBioMetricsSample,
   type EmotiBitSample,
 } from "../lib/sensors";
-import type { HrSnapshot, TaskStatus, TimingBlock } from "../lib/store";
+import type { SensorSnapshot, TaskStatus, TimingBlock } from "../lib/store";
 
 /**
- * Shared lifecycle hook used by every new task.
+ * Shared lifecycle hook used by every task.
  *
  * Phases:
- *   - "setup"   : operator chooses timed vs non-timed + duration
- *   - "running" : the task UI is live; HR is being captured; the countdown
- *                  (if timed) is ticking and turns urgent under 15 s
- *   - "done"    : task is over; the page renders its own summary
+ *   - "setup"   : operator chooses timed vs non-timed + duration. Tasks that
+ *                  never time-limit (AES) skip this by calling startTask() on mount.
+ *   - "running" : the task UI is live; sensors are being captured; the
+ *                  countdown (if timed) is ticking and turns urgent under 30 s.
+ *   - "done"    : task is over; the page renders its own summary.
  *
- * The task page is expected to render whatever it needs during "running"
- * and call `finalize(status, extraTiming?)` when finished. The hook
- * returns timing + HR snapshots so the page can stitch them into its
- * Excel and admin record.
+ * Captures heart rate (mouse + EmotiBit) and EDA (EmotiBit EA stream).
+ * At finalize() we compute both full-duration and last-60-second averages.
  */
 
-export const URGENT_THRESHOLD_S = 15;
+export const URGENT_THRESHOLD_S = 30;
+const LAST_WINDOW_S = 60;
 
 export type TaskTimingPhase = "setup" | "running" | "done";
+
+interface CapturedSample { value: number; unix_ms: number; }
 
 export interface TaskTimingState {
   phase: TaskTimingPhase;
@@ -34,12 +37,12 @@ export interface TaskTimingState {
   isUrgent: boolean;
   setTimed: (v: boolean) => void;
   setDurationS: (v: number) => void;
-  /** Called by operator from the setup screen. */
+  /** Called by operator from the setup screen — or directly on mount for untimed-only tasks. */
   startTask: () => void;
   /** Called by the page when the task is over. Returns the finalized record. */
   finalize: (status: TaskStatus) => {
     timing: TimingBlock;
-    hr: HrSnapshot;
+    sensors: SensorSnapshot;
     status: TaskStatus;
     timed: boolean;
     time_limit_s: number | null;
@@ -48,9 +51,18 @@ export interface TaskTimingState {
   };
 }
 
-export const useTaskTiming = (defaultDurationS: number): TaskTimingState => {
+const computeAvg = (xs: number[]): number | null =>
+  xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : null;
+
+const sliceLast = (samples: CapturedSample[], endUnixMs: number): CapturedSample[] => {
+  const cutoff = endUnixMs - LAST_WINDOW_S * 1000;
+  return samples.filter((s) => s.unix_ms >= cutoff);
+};
+
+export const useTaskTiming = (defaultDurationS: number, opts?: { alwaysUntimed?: boolean }): TaskTimingState => {
+  const alwaysUntimed = opts?.alwaysUntimed ?? false;
   const [phase, setPhase] = useState<TaskTimingPhase>("setup");
-  const [timed, setTimed] = useState(true);
+  const [timed, setTimedState] = useState(!alwaysUntimed);
   const [durationS, setDurationS] = useState(defaultDurationS);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
 
@@ -61,10 +73,16 @@ export const useTaskTiming = (defaultDurationS: number): TaskTimingState => {
 
   const mouseSamplesRef = useRef<MouseBioMetricsSample[]>([]);
   const emotiSamplesRef = useRef<EmotiBitSample[]>([]);
-  const mouseHrBufRef = useRef<number[]>([]);
-  const emotiHrBufRef = useRef<number[]>([]);
+  // Numeric buffers (with unix_ms timestamps) so we can compute last-60s averages
+  const mouseHrBufRef = useRef<CapturedSample[]>([]);
+  const emotiHrBufRef = useRef<CapturedSample[]>([]);
+  const emotiEdaBufRef = useRef<CapturedSample[]>([]);
 
-  // Cleanup on unmount.
+  const setTimed = useCallback((v: boolean) => {
+    if (alwaysUntimed) return;
+    setTimedState(v);
+  }, [alwaysUntimed]);
+
   useEffect(() => () => {
     if (tickRef.current) clearInterval(tickRef.current);
     unsubRef.current.forEach((fn) => fn());
@@ -75,6 +93,7 @@ export const useTaskTiming = (defaultDurationS: number): TaskTimingState => {
     emotiSamplesRef.current = [];
     mouseHrBufRef.current = [];
     emotiHrBufRef.current = [];
+    emotiEdaBufRef.current = [];
 
     startedRef.current = {
       iso: new Date().toISOString(),
@@ -86,25 +105,28 @@ export const useTaskTiming = (defaultDurationS: number): TaskTimingState => {
       sensors.onMouseSample((s) => {
         mouseSamplesRef.current.push(s);
         if (typeof s.heartRate === "number" && Number.isFinite(s.heartRate) && s.heartRate > 0) {
-          mouseHrBufRef.current.push(s.heartRate);
+          mouseHrBufRef.current.push({ value: s.heartRate, unix_ms: s.unix_ms });
         }
       }),
       sensors.onEmotiBitSample((s) => {
         emotiSamplesRef.current.push(s);
         if (isEmotiBitHrSample(s)) {
           const v = typeof s.value === "number" ? s.value : Number(s.value);
-          if (Number.isFinite(v) && v > 0) emotiHrBufRef.current.push(v);
+          if (Number.isFinite(v) && v > 0) emotiHrBufRef.current.push({ value: v, unix_ms: s.unix_ms });
+        } else if (isEmotiBitEdaSample(s)) {
+          const v = typeof s.value === "number" ? s.value : Number(s.value);
+          if (Number.isFinite(v)) emotiEdaBufRef.current.push({ value: v, unix_ms: s.unix_ms });
         }
       }),
     );
 
-    if (timed) {
+    const effectiveTimed = !alwaysUntimed && timed;
+    if (effectiveTimed) {
       deadlinePerfRef.current = performance.now() + durationS * 1000;
       setSecondsLeft(durationS);
       tickRef.current = setInterval(() => {
         const left = Math.max(0, (deadlinePerfRef.current! - performance.now()) / 1000);
         setSecondsLeft(left);
-        // The page is responsible for noticing left===0 and calling finalize("time_expired").
       }, 200);
     } else {
       deadlinePerfRef.current = null;
@@ -112,7 +134,7 @@ export const useTaskTiming = (defaultDurationS: number): TaskTimingState => {
     }
 
     setPhase("running");
-  }, [timed, durationS]);
+  }, [alwaysUntimed, timed, durationS]);
 
   const finalize = useCallback((status: TaskStatus) => {
     if (tickRef.current) {
@@ -137,14 +159,27 @@ export const useTaskTiming = (defaultDurationS: number): TaskTimingState => {
       total_ms: endUnix - started.unix,
     };
 
-    const avg = (xs: number[]) =>
-      xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : null;
+    const mouseHr = mouseHrBufRef.current;
+    const emoHr = emotiHrBufRef.current;
+    const emoEda = emotiEdaBufRef.current;
 
-    const hr: HrSnapshot = {
-      mouse_hr_avg: avg(mouseHrBufRef.current),
-      mouse_hr_n_samples: mouseHrBufRef.current.length,
-      emotibit_hr_avg: avg(emotiHrBufRef.current),
-      emotibit_hr_n_samples: emotiHrBufRef.current.length,
+    const mouseHrLast = sliceLast(mouseHr, endUnix);
+    const emoHrLast = sliceLast(emoHr, endUnix);
+    const emoEdaLast = sliceLast(emoEda, endUnix);
+
+    const sensorSnap: SensorSnapshot = {
+      mouse_hr_avg: computeAvg(mouseHr.map((x) => x.value)),
+      mouse_hr_n_samples: mouseHr.length,
+      emotibit_hr_avg: computeAvg(emoHr.map((x) => x.value)),
+      emotibit_hr_n_samples: emoHr.length,
+      emotibit_eda_avg: computeAvg(emoEda.map((x) => x.value)),
+      emotibit_eda_n_samples: emoEda.length,
+      mouse_hr_avg_last60s: computeAvg(mouseHrLast.map((x) => x.value)),
+      mouse_hr_n_samples_last60s: mouseHrLast.length,
+      emotibit_hr_avg_last60s: computeAvg(emoHrLast.map((x) => x.value)),
+      emotibit_hr_n_samples_last60s: emoHrLast.length,
+      emotibit_eda_avg_last60s: computeAvg(emoEdaLast.map((x) => x.value)),
+      emotibit_eda_n_samples_last60s: emoEdaLast.length,
     };
 
     setPhase("done");
@@ -152,20 +187,20 @@ export const useTaskTiming = (defaultDurationS: number): TaskTimingState => {
 
     return {
       timing,
-      hr,
+      sensors: sensorSnap,
       status,
-      timed,
-      time_limit_s: timed ? durationS : null,
+      timed: !alwaysUntimed && timed,
+      time_limit_s: !alwaysUntimed && timed ? durationS : null,
       mouse_samples: mouseSamplesRef.current.slice(),
       emotibit_samples: emotiSamplesRef.current.slice(),
     };
-  }, [timed, durationS]);
+  }, [alwaysUntimed, timed, durationS]);
 
   const isUrgent = secondsLeft !== null && secondsLeft < URGENT_THRESHOLD_S;
 
   return {
     phase,
-    timed,
+    timed: !alwaysUntimed && timed,
     durationS,
     secondsLeft,
     isUrgent,

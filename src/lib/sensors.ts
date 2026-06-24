@@ -44,6 +44,7 @@ export interface EmotiBitSample {
 type Listener<T> = (value: T) => void;
 
 const MOUSE_HR_TAGS = new Set(["HR", "BPM", "HEART_RATE", "HRM"]);
+const EMOTIBIT_EDA_TAGS = new Set(["EA"]);
 
 const isFiniteNum = (v: unknown): v is number =>
   typeof v === "number" && Number.isFinite(v);
@@ -242,3 +243,7 @@ export const sensors = new SensorBus();
 /** Helper: is the given EmotiBit sample a heart-rate sample? */
 export const isEmotiBitHrSample = (s: EmotiBitSample): boolean =>
   MOUSE_HR_TAGS.has(s.stream_tag.toUpperCase());
+
+/** Helper: is the given EmotiBit sample an EDA (electrodermal activity) sample? */
+export const isEmotiBitEdaSample = (s: EmotiBitSample): boolean =>
+  EMOTIBIT_EDA_TAGS.has(s.stream_tag.toUpperCase());

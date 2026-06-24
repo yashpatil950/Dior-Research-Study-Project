@@ -1,14 +1,11 @@
 import { QuestionnaireTaskPage } from "./QuestionnaireTaskPage";
 import { TASK5_QUESTIONS } from "../lib/task-data";
 
-export const Task5Page = () => (
+export const FormEntry2Page = () => (
   <QuestionnaireTaskPage
-    taskId={5}
-    label="Form b"
+    taskKey="form_entry_2"
     description={<p>A short questionnaire about your current state and habits.</p>}
     questions={TASK5_QUESTIONS}
     defaultDurationS={300}
-    nextRoute="/task/6"
-    nextRouteLabel="Task 6 (Email classification)"
   />
 );
