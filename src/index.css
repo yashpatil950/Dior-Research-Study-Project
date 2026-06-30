@@ -284,6 +284,24 @@ h2 { font-size: 26px; }
 }
 .circ-stop-btn:hover { background: #b9651a; }
 
+/* ---- Trial-screen stop-early button (no on-screen timer) ---- */
+.trial-stop-btn {
+  position: fixed;
+  top: 78px;
+  right: 24px;
+  z-index: 60;
+  background: #e67e22;
+  color: #fff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+.trial-stop-btn:hover { background: #b9651a; }
+
 /* ---- Session-setup order list ---- */
 .order-row {
   display: flex;

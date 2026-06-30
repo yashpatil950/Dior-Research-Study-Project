@@ -20,7 +20,6 @@ import {
   type SensorSnapshot,
 } from "../lib/store";
 import { writeWorkbook } from "../lib/excel";
-import { CircularCountdown } from "../components/CircularCountdown";
 
 const DURATION_S = 300; // 5 minutes
 const LAST_WINDOW_MS = 60 * 1000;
@@ -39,7 +38,6 @@ export const BaselinePage = ({ phase }: { phase: Phase }) => {
   const bothConnected = connection.emotibit === "connected" && connection.mouse === "connected";
 
   const [stage, setStage] = useState<Stage>("ready");
-  const [secondsLeft, setSecondsLeft] = useState(DURATION_S);
   const [lastResult, setLastResult] = useState<BaselineResult | null>(null);
 
   const mouseBufRef = useRef<MouseBioMetricsSample[]>([]);
@@ -83,13 +81,11 @@ export const BaselinePage = ({ phase }: { phase: Phase }) => {
     );
 
     setStage("recording");
-    setSecondsLeft(DURATION_S);
 
+    // Fixed-duration baseline: auto-stop at DURATION_S. No on-screen countdown.
     tickRef.current = setInterval(() => {
       const elapsed = (performance.now() - startWallRef.current!.perf) / 1000;
-      const left = Math.max(0, DURATION_S - elapsed);
-      setSecondsLeft(left);
-      if (left <= 0) finish();
+      if (elapsed >= DURATION_S) finish();
     }, 100);
   };
 
@@ -233,11 +229,6 @@ export const BaselinePage = ({ phase }: { phase: Phase }) => {
 
       {stage === "recording" && (
         <>
-          <CircularCountdown
-            secondsLeft={secondsLeft}
-            totalSeconds={DURATION_S}
-            onStopEarly={finish}
-          />
           <div className="metric-grid">
             <LiveCard label="EmotiBit HR" value={liveEmotiHr} unit="bpm" />
             <LiveCard label="Mouse HR" value={liveMouseHr} unit="bpm" />

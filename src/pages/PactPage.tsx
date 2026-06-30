@@ -21,7 +21,6 @@ import {
   type SensorSnapshot,
 } from "../lib/store";
 import { writeWorkbook } from "../lib/excel";
-import { CircularCountdown } from "../components/CircularCountdown";
 import {
   meanOf,
   runBlock,
@@ -72,9 +71,7 @@ export const PactPage = () => {
   const [instructionHtml, setInstructionHtml] = useState("");
   const [progress, setProgress] = useState("");
 
-  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const deadlineRef = useRef<number | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const mouseSamplesRef = useRef<MouseBioMetricsSample[]>([]);
   const emotiSamplesRef = useRef<EmotiBitSample[]>([]);
@@ -94,7 +91,6 @@ export const PactPage = () => {
   useEffect(() => () => {
     abortRef.current?.abort();
     hrUnsubsRef.current.forEach((fn) => fn());
-    if (timerRef.current) clearInterval(timerRef.current);
   }, []);
 
   const startSensorCapture = () => {
@@ -128,22 +124,14 @@ export const PactPage = () => {
     hrUnsubsRef.current = [];
   };
 
-  const startCountdown = (limitS: number) => {
+  // The recorded blocks still share a time cap, enforced inside runBlock via
+  // deadlineRef. There is no on-screen countdown — we only track the deadline.
+  const startBlockDeadline = (limitS: number) => {
     deadlineRef.current = performance.now() + limitS * 1000;
-    setSecondsLeft(limitS);
-    timerRef.current = setInterval(() => {
-      const left = Math.max(0, (deadlineRef.current! - performance.now()) / 1000);
-      setSecondsLeft(left);
-    }, 200);
   };
 
-  const stopCountdown = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+  const clearBlockDeadline = () => {
     deadlineRef.current = null;
-    setSecondsLeft(null);
   };
 
   useEffect(() => {
@@ -200,7 +188,7 @@ export const PactPage = () => {
   const onStartInitBlock = async () => {
     recordedStartRef.current = { iso: new Date().toISOString(), unix: Date.now() };
     startSensorCapture();
-    startCountdown(config.timeLimitS);
+    startBlockDeadline(config.timeLimitS);
     setScreen("init-block");
     const out = await runOneBlock("initiation", false, config.initTrials);
     if (out.reason === "time_expired") return finalize("time_expired");
@@ -233,7 +221,7 @@ export const PactPage = () => {
 
   const finalize = (status: PactResult["status"]) => {
     stopSensorCapture();
-    stopCountdown();
+    clearBlockDeadline();
     recordedEndRef.current = { iso: new Date().toISOString(), unix: Date.now() };
 
     const initRows = trialDataRef.current.filter((r) => r.task === "initiation" && r.is_practice === 0);
@@ -367,8 +355,9 @@ export const PactPage = () => {
           <NumRow label="# Planning practice" value={config.planPractice} onChange={(v) => setConfig((c) => ({ ...c, planPractice: v }))} />
           <NumRow label="Time limit (seconds, total recorded)" value={config.timeLimitS} onChange={(v) => setConfig((c) => ({ ...c, timeLimitS: v }))} />
           <p className="hint">
-            The timer counts down only during the <b>recorded</b> Initiation and Planning blocks
-            (practice is untimed). It turns red under 30 s; reaching 0 ends the task early.
+            The <b>recorded</b> Initiation and Planning blocks share a {config.timeLimitS}s cap
+            (practice is untimed). There is no on-screen countdown; if the limit is reached the
+            task ends and saves automatically.
           </p>
           <div style={{ marginTop: 20 }}>
             <button
@@ -406,7 +395,7 @@ export const PactPage = () => {
       <div className="screen">
         <h1>Practice Complete</h1>
         <div className="instructions">
-          <p>The recorded Initiation block is next. The countdown timer begins as soon as you click below.</p>
+          <p>The recorded Initiation block is next. Recording begins as soon as you click below.</p>
           <button className="btn btn-success" onClick={onStartInitBlock}>Start Initiation Block</button>
         </div>
       </div>
@@ -451,7 +440,7 @@ export const PactPage = () => {
       <div className="screen">
         <h1>Practice Complete</h1>
         <div className="instructions">
-          <p>The recorded Planning block is next. The countdown timer continues.</p>
+          <p>The recorded Planning block is next. Recording continues.</p>
           <button className="btn btn-success" onClick={onStartPlanBlock}>Start Planning Block</button>
         </div>
       </div>
@@ -474,7 +463,7 @@ export const PactPage = () => {
 
   // ---- Trial screens ----
   const showRule = screen === "plan-practice" || screen === "plan-block";
-  const showTimer = screen === "init-block" || screen === "plan-block";
+  const showStopEarly = screen === "init-block" || screen === "plan-block";
 
   return (
     <div className="trial-screen">
@@ -484,12 +473,8 @@ export const PactPage = () => {
           <span className="right-rule"><b>RIGHT</b> = Orange OR Vertical stripes</span>
         </div>
       )}
-      {showTimer && secondsLeft !== null && (
-        <CircularCountdown
-          secondsLeft={secondsLeft}
-          totalSeconds={config.timeLimitS}
-          onStopEarly={onStopEarly}
-        />
+      {showStopEarly && (
+        <button className="trial-stop-btn" onClick={onStopEarly}>End early &amp; save</button>
       )}
       <div className="trial-progress">{progress}</div>
 
