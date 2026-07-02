@@ -30,6 +30,12 @@ type Stage = "ready" | "recording" | "complete";
 const computeAvg = (xs: number[]): number | null =>
   xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : null;
 
+// EDA values are tiny (~0.1–1.0), so the 2-dp rounding used for HR (bpm) throws
+// away meaningful precision. Keep full precision instead; toPrecision(12) strips
+// binary-float noise (e.g. 0.170135999999) without discarding real digits.
+const computeAvgPrecise = (xs: number[]): number | null =>
+  xs.length ? Number((xs.reduce((a, b) => a + b, 0) / xs.length).toPrecision(12)) : null;
+
 export const BaselinePage = ({ phase }: { phase: Phase }) => {
   const navigate = useNavigate();
   const participant = getCurrentParticipant() ?? "";
@@ -124,13 +130,13 @@ export const BaselinePage = ({ phase }: { phase: Phase }) => {
       mouse_hr_n_samples: mouseHrAll.length,
       emotibit_hr_avg: computeAvg(emoHrAll.map((x) => x.v)),
       emotibit_hr_n_samples: emoHrAll.length,
-      emotibit_eda_avg: computeAvg(edaAll.map((x) => x.v)),
+      emotibit_eda_avg: computeAvgPrecise(edaAll.map((x) => x.v)),
       emotibit_eda_n_samples: edaAll.length,
       mouse_hr_avg_last60s: computeAvg(mouseHrLast.map((x) => x.v)),
       mouse_hr_n_samples_last60s: mouseHrLast.length,
       emotibit_hr_avg_last60s: computeAvg(emoHrLast.map((x) => x.v)),
       emotibit_hr_n_samples_last60s: emoHrLast.length,
-      emotibit_eda_avg_last60s: computeAvg(edaLast.map((x) => x.v)),
+      emotibit_eda_avg_last60s: computeAvgPrecise(edaLast.map((x) => x.v)),
       emotibit_eda_n_samples_last60s: edaLast.length,
     };
 

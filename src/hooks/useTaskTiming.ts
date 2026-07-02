@@ -54,6 +54,12 @@ export interface TaskTimingState {
 const computeAvg = (xs: number[]): number | null =>
   xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : null;
 
+// EDA values are tiny (~0.1–1.0), so the 2-dp rounding used for HR (bpm) throws
+// away meaningful precision. Keep full precision instead; toPrecision(12) strips
+// binary-float noise (e.g. 0.170135999999) without discarding real digits.
+const computeAvgPrecise = (xs: number[]): number | null =>
+  xs.length ? Number((xs.reduce((a, b) => a + b, 0) / xs.length).toPrecision(12)) : null;
+
 const sliceLast = (samples: CapturedSample[], endUnixMs: number): CapturedSample[] => {
   const cutoff = endUnixMs - LAST_WINDOW_S * 1000;
   return samples.filter((s) => s.unix_ms >= cutoff);
@@ -172,13 +178,13 @@ export const useTaskTiming = (defaultDurationS: number, opts?: { alwaysUntimed?:
       mouse_hr_n_samples: mouseHr.length,
       emotibit_hr_avg: computeAvg(emoHr.map((x) => x.value)),
       emotibit_hr_n_samples: emoHr.length,
-      emotibit_eda_avg: computeAvg(emoEda.map((x) => x.value)),
+      emotibit_eda_avg: computeAvgPrecise(emoEda.map((x) => x.value)),
       emotibit_eda_n_samples: emoEda.length,
       mouse_hr_avg_last60s: computeAvg(mouseHrLast.map((x) => x.value)),
       mouse_hr_n_samples_last60s: mouseHrLast.length,
       emotibit_hr_avg_last60s: computeAvg(emoHrLast.map((x) => x.value)),
       emotibit_hr_n_samples_last60s: emoHrLast.length,
-      emotibit_eda_avg_last60s: computeAvg(emoEdaLast.map((x) => x.value)),
+      emotibit_eda_avg_last60s: computeAvgPrecise(emoEdaLast.map((x) => x.value)),
       emotibit_eda_n_samples_last60s: emoEdaLast.length,
     };
 

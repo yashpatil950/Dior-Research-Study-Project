@@ -57,6 +57,12 @@ interface TimedSample { value: number; unix_ms: number; }
 const computeAvg = (xs: number[]): number | null =>
   xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : null;
 
+// EDA values are tiny (~0.1–1.0), so the 2-dp rounding used for HR (bpm) throws
+// away meaningful precision. Keep full precision instead; toPrecision(12) strips
+// binary-float noise (e.g. 0.170135999999) without discarding real digits.
+const computeAvgPrecise = (xs: number[]): number | null =>
+  xs.length ? Number((xs.reduce((a, b) => a + b, 0) / xs.length).toPrecision(12)) : null;
+
 export const PactPage = () => {
   const navigate = useNavigate();
   const participant = getCurrentParticipant() ?? "";
@@ -245,13 +251,13 @@ export const PactPage = () => {
       mouse_hr_n_samples: mouseHr.length,
       emotibit_hr_avg: computeAvg(emoHr.map((x) => x.value)),
       emotibit_hr_n_samples: emoHr.length,
-      emotibit_eda_avg: computeAvg(emoEda.map((x) => x.value)),
+      emotibit_eda_avg: computeAvgPrecise(emoEda.map((x) => x.value)),
       emotibit_eda_n_samples: emoEda.length,
       mouse_hr_avg_last60s: computeAvg(mouseHrL.map((x) => x.value)),
       mouse_hr_n_samples_last60s: mouseHrL.length,
       emotibit_hr_avg_last60s: computeAvg(emoHrL.map((x) => x.value)),
       emotibit_hr_n_samples_last60s: emoHrL.length,
-      emotibit_eda_avg_last60s: computeAvg(emoEdaL.map((x) => x.value)),
+      emotibit_eda_avg_last60s: computeAvgPrecise(emoEdaL.map((x) => x.value)),
       emotibit_eda_n_samples_last60s: emoEdaL.length,
     };
 
