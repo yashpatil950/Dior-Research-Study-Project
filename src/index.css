@@ -63,22 +63,22 @@ h2 { font-size: 26px; }
 .center { text-align: center; }
 
 .form-row { margin: 16px 0; }
-.form-row label { display: inline-block; width: 280px; font-weight: 500; }
+.form-row label { display: inline-block; width: 300px; font-weight: 500; }
 .form-row input {
-  font-size: 18px;
+  font-size: 20px;
   padding: 8px 12px;
   border: 1px solid #bbb;
   border-radius: 4px;
-  width: 240px;
+  width: 260px;
 }
 
 .btn {
   background: #2c7ed1;
   color: #fff;
   border: none;
-  padding: 12px 28px;
+  padding: 13px 28px;
   border-radius: 6px;
-  font-size: 18px;
+  font-size: 20px;
   cursor: pointer;
   margin: 8px 4px;
 }
@@ -97,6 +97,7 @@ h2 { font-size: 26px; }
   border-radius: 8px;
   padding: 24px 32px;
   margin: 16px 0;
+  font-size: 21px;
 }
 .instructions ul { padding-left: 24px; }
 .instructions li { margin: 8px 0; }
@@ -114,7 +115,7 @@ h2 { font-size: 26px; }
 }
 
 .error-msg { color: #c0392b; font-weight: 600; }
-.hint { color: #777; font-size: 14px; margin-top: 6px; }
+.hint { color: #777; font-size: 16px; margin-top: 6px; }
 
 /* ---- Sensor status pill ---- */
 .sensor-pill {
@@ -146,7 +147,7 @@ h2 { font-size: 26px; }
   background: #fdecea;
   border: 1px solid #f0b7b1;
   color: #8a1a10;
-  font-size: 16px;
+  font-size: 18px;
 }
 .connection-gate strong { font-weight: 700; }
 .connection-gate ul { margin: 8px 0 0 0; padding-left: 24px; }
@@ -215,7 +216,7 @@ h2 { font-size: 26px; }
   left: 0;
   right: 0;
   text-align: center;
-  font-size: 24px;
+  font-size: 26px;
   color: #555;
 }
 .trial-progress {
@@ -416,12 +417,12 @@ h2 { font-size: 26px; }
   image-rendering: -webkit-optimize-contrast;
 }
 .big-message {
-  font-size: 28px;
+  font-size: 31px;
   text-align: center;
   color: #333;
 }
 .feedback {
-  font-size: 26px;
+  font-size: 29px;
   font-weight: 600;
   text-align: center;
 }
@@ -439,10 +440,10 @@ h2 { font-size: 26px; }
   margin: 12px 0 24px 0;
 }
 .summary-table th, .summary-table td {
-  padding: 10px 16px;
+  padding: 11px 16px;
   text-align: left;
   border-bottom: 1px solid #eee;
-  font-size: 15px;
+  font-size: 17px;
 }
 .summary-table th { background: #f0f0f0; font-weight: 600; width: 40%; }
 
@@ -472,7 +473,7 @@ h2 { font-size: 26px; }
   margin-bottom: 14px;
 }
 .questionnaire-prompt {
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 500;
   color: #1a1a1a;
   margin-bottom: 10px;
@@ -493,14 +494,14 @@ h2 { font-size: 26px; }
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 4px;
-  font-size: 17px;
+  padding: 8px 4px;
+  font-size: 20px;
   cursor: pointer;
 }
-.opt-row input { transform: scale(1.2); cursor: pointer; }
+.opt-row input { transform: scale(1.35); cursor: pointer; }
 
 .qdropdown {
-  font-size: 17px;
+  font-size: 20px;
   padding: 8px 12px;
   border: 1px solid #bbb;
   border-radius: 6px;
@@ -508,11 +509,11 @@ h2 { font-size: 26px; }
   min-width: 240px;
 }
 .qdate, .qtext {
-  font-size: 17px;
+  font-size: 20px;
   padding: 8px 12px;
   border: 1px solid #bbb;
   border-radius: 6px;
-  width: 240px;
+  width: 260px;
 }
 
 .scale-row {
@@ -522,7 +523,7 @@ h2 { font-size: 26px; }
   flex-wrap: wrap;
 }
 .scale-end {
-  font-size: 14px;
+  font-size: 17px;
   color: #666;
 }
 .scale-cell {
@@ -531,13 +532,13 @@ h2 { font-size: 26px; }
   align-items: center;
   gap: 4px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 18px;
 }
 .scale-cell .scale-num {
   font-weight: 600;
   color: #555;
 }
-.scale-cell input { transform: scale(1.3); cursor: pointer; }
+.scale-cell input { transform: scale(1.45); cursor: pointer; }
 
 /* ---- Story card (Tasks 1 & 2) ---- */
 .story-card {
@@ -546,19 +547,60 @@ h2 { font-size: 26px; }
   border-radius: 10px;
   padding: 18px 22px;
   margin-bottom: 18px;
-  font-size: 17px;
+  font-size: 20px;
   line-height: 1.55;
 }
 .story-card h3 {
   margin: 0 0 8px 0;
-  font-size: 19px;
+  font-size: 23px;
   color: #b9651a;
 }
 .story-card ul { margin: 6px 0 0 0; padding-left: 22px; }
 .story-card li { margin: 4px 0; }
 
 /* ---- AES Avatar player ---- */
+
+/*
+ * The avatar screen is a fixed-height stage: the video grows to fill whatever
+ * vertical space is left over so everything stays visible without scrolling.
+ */
+.aes-screen {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  max-width: 1600px;
+  padding: 8px 20px 12px;
+  gap: 10px;
+}
+.aes-topline {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.aes-topline-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #2c3e50;
+}
+.aes-topline .aes-progress {
+  margin: 0;
+  font-size: 19px;
+  color: #555;
+}
+.aes-topline-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+.btn-sm {
+  margin: 0;
+  padding: 6px 14px;
+  font-size: 15px;
+}
+
 .aes-video-frame {
+  position: relative;
   width: 100%;
   max-width: 860px;
   aspect-ratio: 16 / 9;
@@ -567,6 +609,58 @@ h2 { font-size: 26px; }
   border: 1px solid #e0e0e0;
   overflow: hidden;
   margin: 0 auto;
+}
+/* Height comes from the flex row; aspect-ratio then derives the width, so the
+   frame hugs the video and no letterboxing shows around it. */
+.aes-screen .aes-video-frame {
+  flex: 1 1 0;
+  min-height: 0;
+  width: auto;
+  max-width: 100%;
+  align-self: center;
+}
+.aes-audio-badge {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 600;
+  padding: 9px 18px;
+  border-radius: 999px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Previous + the four choices + Next, all on one line under the video. */
+.aes-control-row {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+}
+.aes-control-row-center { justify-content: center; }
+.aes-control-row .aes-opt {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  padding: 18px 10px;
+  font-size: 22px;
+}
+.aes-control-row .aes-nav-btn {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 18px 24px;
+  font-size: 19px;
+}
+
+@media (max-width: 1150px) {
+  .aes-control-row { gap: 8px; }
+  .aes-control-row .aes-opt { padding: 14px 6px; font-size: 18px; }
+  .aes-control-row .aes-nav-btn { padding: 14px 14px; font-size: 16px; }
 }
 .aes-video-frame video {
   width: 100%;
@@ -589,12 +683,12 @@ h2 { font-size: 26px; }
 }
 .aes-opt {
   flex: 1 1 200px;
-  padding: 12px 10px;
+  padding: 14px 10px;
   border-radius: 12px;
   border: 2px solid #500000;
   background: #fff;
   color: #500000;
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 700;
   cursor: pointer;
   text-align: center;
@@ -618,7 +712,7 @@ h2 { font-size: 26px; }
   border-radius: 10px;
   padding: 28px 24px;
   text-align: center;
-  font-size: 26px;
+  font-size: 30px;
   font-weight: 500;
   max-width: 860px;
   margin: 0 auto;
@@ -632,7 +726,7 @@ h2 { font-size: 26px; }
   max-width: 880px;
   margin: 0 auto 18px;
   font-family: "Google Sans", Roboto, Arial, sans-serif;
-  font-size: 17px;
+  font-size: 19px;
   color: #202124;
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
@@ -701,7 +795,7 @@ h2 { font-size: 26px; }
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 22px;
+  font-size: 25px;
   font-weight: 500;
 }
 .email-mock .subject-line .inbox-chip {
@@ -732,23 +826,23 @@ h2 { font-size: 26px; }
 }
 .email-mock .sender-info { flex: 1; }
 .email-mock .sender-name {
-  font-size: 17px;
+  font-size: 19px;
 }
 .email-mock .sender-name strong { font-weight: 600; }
-.email-mock .sender-name .addr { color: #5f6368; font-size: 14px; margin-left: 4px; }
+.email-mock .sender-name .addr { color: #5f6368; font-size: 16px; margin-left: 4px; }
 .email-mock .sender-to {
   color: #5f6368;
-  font-size: 14px;
+  font-size: 16px;
   margin-top: 2px;
 }
 .email-mock .sender-meta {
   color: #5f6368;
-  font-size: 14px;
+  font-size: 16px;
   text-align: right;
 }
 .email-mock .body {
   padding: 4px 24px 24px;
-  font-size: 18px;
+  font-size: 21px;
   line-height: 1.5;
   white-space: pre-wrap;
 }
@@ -762,7 +856,7 @@ h2 { font-size: 26px; }
   border-radius: 18px;
   background: #fff;
   padding: 6px 18px;
-  font-size: 14px;
+  font-size: 16px;
   color: #5f6368;
 }
 
@@ -774,12 +868,12 @@ h2 { font-size: 26px; }
   justify-content: center;
 }
 .classify-btn {
-  padding: 14px 22px;
+  padding: 16px 22px;
   border-radius: 10px;
   border: 2px solid #2c7ed1;
   background: #fff;
   color: #2c7ed1;
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 600;
   cursor: pointer;
   min-width: 220px;
@@ -792,6 +886,7 @@ h2 { font-size: 26px; }
 .classify-progress {
   text-align: center;
   font-weight: 600;
+  font-size: 20px;
   color: #555;
   margin-bottom: 12px;
 }

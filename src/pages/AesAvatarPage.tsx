@@ -275,56 +275,61 @@ export const AesAvatarPage = () => {
   }
 
   return (
-    <div className="screen">
+    <div className="screen aes-screen">
       <ConnectionGate />
-      <div style={{ position: "fixed", top: 80, right: 20 }}>
-        <button className="btn btn-warn" onClick={onStopEarly}>End early &amp; save</button>
-      </div>
 
-      <h1 className="center">{TASK_LABEL.aes_avatar}</h1>
-      <div className="aes-progress">
-        {stage === "intro" ? "Welcome" : `Question ${idx + 1} of ${TASK_VIDEOS.length}`}
+      <div className="aes-topline">
+        <span className="aes-topline-title">{TASK_LABEL.aes_avatar}</span>
+        <span className="aes-progress">
+          {stage === "intro" ? "Welcome" : `Question ${idx + 1} of ${TASK_VIDEOS.length}`}
+        </span>
+        <span className="aes-topline-actions">
+          {stage === "trial" && (
+            <button className="btn btn-sm" onClick={onAskAgain}>↻ Ask again</button>
+          )}
+          <button className="btn btn-warn btn-sm" onClick={onStopEarly}>End early &amp; save</button>
+        </span>
       </div>
 
       <div className="aes-video-frame" onClick={onUnlockAudio} title="Click to enable audio">
         {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
         <video ref={videoRef} playsInline preload="auto" />
+        {!audioUnlocked && (
+          <span className="aes-audio-badge">🔇 Click the video to enable audio</span>
+        )}
       </div>
 
-      {!audioUnlocked && (
-        <div className="center hint" style={{ marginTop: 8 }}>Click the video to enable audio.</div>
-      )}
-
       {stage === "intro" && (
-        <div className="center" style={{ marginTop: 18 }}>
+        <div className="aes-control-row aes-control-row-center">
           <button className="btn btn-success" onClick={startTrials}>Begin questions</button>
         </div>
       )}
 
       {stage === "trial" && (
-        <>
-          <div className="aes-opts">
-            {AES_CHOICES.map((c, i) => {
-              const selected = responses[idx]?.choiceIndex === i;
-              return (
-                <button
-                  key={c.label}
-                  className={`aes-opt ${selected ? "selected" : ""}`}
-                  onClick={() => selectAnswer(i)}
-                >
-                  {c.label}
-                </button>
-              );
-            })}
-          </div>
-          <div className="aes-nav-row">
-            <button className="btn btn-secondary" disabled={idx === 0} onClick={onPrev}>Previous</button>
-            <button className="btn" onClick={onAskAgain}>↻ Ask again</button>
-            <button className="btn btn-success" disabled={!responses[idx]} onClick={onNext}>
-              {idx === TASK_VIDEOS.length - 1 ? "Finish" : "Next"}
-            </button>
-          </div>
-        </>
+        <div className="aes-control-row">
+          <button className="btn btn-secondary aes-nav-btn" disabled={idx === 0} onClick={onPrev}>
+            Previous
+          </button>
+          {AES_CHOICES.map((c, i) => {
+            const selected = responses[idx]?.choiceIndex === i;
+            return (
+              <button
+                key={c.label}
+                className={`aes-opt ${selected ? "selected" : ""}`}
+                onClick={() => selectAnswer(i)}
+              >
+                {c.label}
+              </button>
+            );
+          })}
+          <button
+            className="btn btn-success aes-nav-btn"
+            disabled={!responses[idx]}
+            onClick={onNext}
+          >
+            {idx === TASK_VIDEOS.length - 1 ? "Finish" : "Next"}
+          </button>
+        </div>
       )}
     </div>
   );
