@@ -1,5 +1,5 @@
 import { ConnectionGate } from "./ConnectionGate";
-import { useConnectionState } from "../hooks/useSensors";
+import { useCanStartTask } from "../hooks/useSensors";
 
 /**
  * Pre-task screen used by every new task: pick timed vs non-timed +
@@ -27,8 +27,7 @@ export const TaskSetup = ({
   onStart: () => void;
   startLabel?: string;
 }) => {
-  const state = useConnectionState();
-  const bothConnected = state.emotibit === "connected" && state.mouse === "connected";
+  const canStart = useCanStartTask();
 
   return (
     <div className="screen">
@@ -84,13 +83,13 @@ export const TaskSetup = ({
         <div style={{ marginTop: 20 }}>
           <button
             className="btn btn-success"
-            disabled={!bothConnected}
+            disabled={!canStart}
             onClick={onStart}
-            title={!bothConnected ? "Both sensors must be connected" : ""}
+            title={!canStart ? "Both sensors must be connected (or turn on Test mode)" : ""}
           >
             ▶ {startLabel}
           </button>
-          {!bothConnected && (
+          {!canStart && (
             <span className="error-msg" style={{ marginLeft: 12 }}>
               Connect both sensors before starting.
             </span>

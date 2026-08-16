@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ConnectionGate } from "../components/ConnectionGate";
-import { useConnectionState } from "../hooks/useSensors";
+import { useCanStartTask } from "../hooks/useSensors";
 import {
   sensors,
   isEmotiBitHrSample,
@@ -40,8 +40,7 @@ export const BaselinePage = ({ phase }: { phase: Phase }) => {
   const navigate = useNavigate();
   const participant = getCurrentParticipant() ?? "";
   const taskKey = phase === "start" ? "baseline_start" : "baseline_end";
-  const connection = useConnectionState();
-  const bothConnected = connection.emotibit === "connected" && connection.mouse === "connected";
+  const canStart = useCanStartTask();
 
   const [stage, setStage] = useState<Stage>("ready");
   const [lastResult, setLastResult] = useState<BaselineResult | null>(null);
@@ -72,7 +71,7 @@ export const BaselinePage = ({ phase }: { phase: Phase }) => {
   }, []);
 
   const start = () => {
-    if (!bothConnected) return;
+    if (!canStart) return;
     mouseBufRef.current = [];
     emotiBufRef.current = [];
     startWallRef.current = {
@@ -221,14 +220,17 @@ export const BaselinePage = ({ phase }: { phase: Phase }) => {
           <p>Ask the participant to sit still and breathe normally. When ready, click below to begin.</p>
           <button
             className="btn btn-success"
-            disabled={!bothConnected}
+            disabled={!canStart}
             onClick={start}
-            title={!bothConnected ? "Both sensors must be connected" : ""}
+            title={!canStart ? "Both sensors must be connected (or turn on Test mode)" : ""}
           >
             ▶ Start {(DURATION_S / 60).toFixed(0)}-minute Baseline
           </button>
-          {!bothConnected && (
-            <p className="error-msg">Both sensors must be connected before starting.</p>
+          {!canStart && (
+            <p className="error-msg">
+              Both sensors must be connected before starting — or turn on <b>Test mode</b> in the
+              top bar to walk through the app without them.
+            </p>
           )}
         </div>
       )}

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ConnectionGate } from "../components/ConnectionGate";
-import { useConnectionState } from "../hooks/useSensors";
+import { useCanStartTask } from "../hooks/useSensors";
 import { useTaskTiming } from "../hooks/useTaskTiming";
 import {
   AES_CHOICES,
@@ -33,8 +33,7 @@ const TASK_VIDEOS = Array.from({ length: 18 }, (_, i) =>
 export const AesAvatarPage = () => {
   const navigate = useNavigate();
   const participant = getCurrentParticipant() ?? "";
-  const connection = useConnectionState();
-  const bothConnected = connection.emotibit === "connected" && connection.mouse === "connected";
+  const canStart = useCanStartTask();
   // AES is *always* untimed.
   const timing = useTaskTiming(0, { alwaysUntimed: true });
 
@@ -58,7 +57,7 @@ export const AesAvatarPage = () => {
   }, [timing.phase, stage]);
 
   const onBegin = () => {
-    if (!bothConnected) return;
+    if (!canStart) return;
     setStage("intro");
     timing.startTask();
   };
@@ -234,14 +233,17 @@ export const AesAvatarPage = () => {
           </p>
           <button
             className="btn btn-success"
-            disabled={!bothConnected}
+            disabled={!canStart}
             onClick={onBegin}
-            title={!bothConnected ? "Both sensors must be connected" : ""}
+            title={!canStart ? "Both sensors must be connected (or turn on Test mode)" : ""}
           >
             ▶ Start AES Avatar
           </button>
-          {!bothConnected && (
-            <p className="error-msg">Both sensors must be connected before starting.</p>
+          {!canStart && (
+            <p className="error-msg">
+              Both sensors must be connected before starting — or turn on <b>Test mode</b> in the
+              top bar to walk through the app without them.
+            </p>
           )}
         </div>
       </div>

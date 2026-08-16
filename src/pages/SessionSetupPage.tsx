@@ -6,9 +6,11 @@ import {
   setSessionOrder,
   REORDERABLE_TASKS,
   TASK_LABEL,
+  TASK_ROUTE,
   type TaskKey,
 } from "../lib/store";
 import { ConnectionGate } from "../components/ConnectionGate";
+import { useTestMode } from "../hooks/useTestMode";
 
 /**
  * Session-Setup page. Sits between login and Baseline (Start). The operator
@@ -24,6 +26,7 @@ import { ConnectionGate } from "../components/ConnectionGate";
 export const SessionSetupPage = () => {
   const navigate = useNavigate();
   const participant = getCurrentParticipant() ?? "";
+  const testMode = useTestMode();
   const [order, setOrder] = useState<TaskKey[]>(() =>
     participant ? getSessionOrder(participant) : REORDERABLE_TASKS.slice(),
   );
@@ -58,6 +61,12 @@ export const SessionSetupPage = () => {
   const save = () => {
     setSessionOrder(participant, order);
     navigate("/baseline/start");
+  };
+
+  /** Test mode only: save the order but go straight to the first task, skipping the baseline. */
+  const saveAndSkipBaseline = () => {
+    setSessionOrder(participant, order);
+    navigate(TASK_ROUTE[order[0]] ?? "/baseline/end");
   };
 
   // ---- Drag handlers ----
@@ -143,6 +152,11 @@ export const SessionSetupPage = () => {
         <div style={{ marginTop: 20, display: "flex", gap: 10 }}>
           <button className="btn btn-success" onClick={save}>Save order &amp; continue → Baseline (Start)</button>
           <button className="btn btn-secondary" onClick={reset}>Reset to default</button>
+          {testMode && order.length > 0 && (
+            <button className="btn btn-secondary" onClick={saveAndSkipBaseline}>
+              Skip baseline → {TASK_LABEL[order[0]]}
+            </button>
+          )}
         </div>
         <p className="hint">
           The order is saved per participant. You can come back to this page anytime before

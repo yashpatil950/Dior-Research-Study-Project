@@ -2,9 +2,11 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { setCurrentParticipant } from "../lib/store";
 import { ConnectionGate } from "../components/ConnectionGate";
+import { useTestMode } from "../hooks/useTestMode";
 
 export const LoginPage = () => {
   const navigate = useNavigate();
+  const testMode = useTestMode();
   const [name, setName] = useState("");
   const [error, setError] = useState("");
 
@@ -49,6 +51,12 @@ export const LoginPage = () => {
         <div style={{ marginTop: 20 }}>
           <button type="submit" className="btn btn-success">Continue → Baseline (start)</button>
         </div>
+        {testMode && (
+          <p className="hint">
+            Test mode is on — use <b>Jump to task…</b> in the top bar to open any task or
+            questionnaire directly, without running the baseline first.
+          </p>
+        )}
         <p className="hint">
           This name is used to label every downloaded file
           (<code>{"<name>_baseline_start_data.xlsx"}</code>, etc.) and to identify the session in the

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ConnectionGate } from "../components/ConnectionGate";
-import { useConnectionState } from "../hooks/useSensors";
+import { useCanStartTask } from "../hooks/useSensors";
 import { useGlobalKeys } from "../hooks/useGlobalKeys";
 import {
   sensors,
@@ -66,8 +66,7 @@ const computeAvgPrecise = (xs: number[]): number | null =>
 export const PactPage = () => {
   const navigate = useNavigate();
   const participant = getCurrentParticipant() ?? "";
-  const connection = useConnectionState();
-  const bothConnected = connection.emotibit === "connected" && connection.mouse === "connected";
+  const canStart = useCanStartTask();
   const { isHeld } = useGlobalKeys();
 
   const [screen, setScreen] = useState<Screen>("setup");
@@ -175,7 +174,7 @@ export const PactPage = () => {
   };
 
   const onStartTask = () => {
-    if (!bothConnected) return;
+    if (!canStart) return;
     trialDataRef.current = [];
     initCompletedRef.current = 0;
     planCompletedRef.current = 0;
@@ -368,12 +367,18 @@ export const PactPage = () => {
           <div style={{ marginTop: 20 }}>
             <button
               className="btn btn-success"
-              disabled={!bothConnected}
+              disabled={!canStart}
               onClick={onStartTask}
-              title={!bothConnected ? "Both sensors must be connected" : ""}
+              title={!canStart ? "Both sensors must be connected (or turn on Test mode)" : ""}
             >
               Begin PACT
             </button>
+            {!canStart && (
+              <p className="error-msg">
+                Both sensors must be connected before starting — or turn on <b>Test mode</b> in the
+                top bar to walk through the app without them.
+              </p>
+            )}
           </div>
         </div>
       </div>

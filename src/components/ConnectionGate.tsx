@@ -1,17 +1,34 @@
 import { useConnectionState } from "../hooks/useSensors";
+import { useTestMode } from "../hooks/useTestMode";
 
 /**
  * Renders a red banner listing whichever sensors aren't connected.
  * Returns null when both are connected. Used at the top of each
  * data-collection screen so the operator sees the problem immediately.
+ *
+ * In test mode the sensor requirement is waived, so this shows an amber
+ * reminder that nothing is being recorded instead of the red blocker.
  */
 export const ConnectionGate = ({ children }: { children?: React.ReactNode }) => {
   const state = useConnectionState();
+  const testMode = useTestMode();
   const missing: string[] = [];
   if (state.emotibit !== "connected") missing.push("EmotiBit");
   if (state.mouse !== "connected") missing.push("Mionix mouse");
 
   if (missing.length === 0) return null;
+
+  if (testMode) {
+    return (
+      <div className="test-gate">
+        <strong>🧪 Test mode</strong> — sensor checks are bypassed so you can walk through the
+        interface. {missing.join(" and ")} {missing.length === 1 ? "is" : "are"} offline, so no
+        heart-rate or EDA data is being recorded and the exported file's sensor columns will be
+        empty. Turn test mode off in the top bar before running a real participant.
+        {children}
+      </div>
+    );
+  }
 
   return (
     <div className="connection-gate">
