@@ -19,17 +19,23 @@ body { user-select: none; -webkit-user-select: none; }
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 20px;
+  padding: 6px 16px;
   border-bottom: 1px solid #e0e0e0;
   background: #fff;
   font-size: 14px;
-  gap: 16px;
+  gap: 14px;
   position: sticky;
   top: 0;
   z-index: 50;
+  flex: 0 0 auto;
+  /* Last resort on very narrow windows: wrap to a second line rather than let
+     the task's title and buttons collide with the sensor pills. */
+  flex-wrap: wrap;
+  row-gap: 6px;
 }
-.topbar .title { font-weight: 600; font-size: 16px; }
-.topbar .pid { color: #666; }
+.topbar .title { font-weight: 600; font-size: 16px; flex: 0 0 auto; }
+.topbar .pid { color: #666; white-space: nowrap; }
+.topbar .nav-links { flex: 0 0 auto; white-space: nowrap; }
 .topbar .nav-links a {
   color: #2c7ed1;
   text-decoration: none;
@@ -37,7 +43,9 @@ body { user-select: none; -webkit-user-select: none; }
   font-size: 14px;
 }
 .topbar .nav-links a:hover { text-decoration: underline; }
-.topbar button {
+/* Direct child only, so buttons a page portals into .topbar-slot keep their
+   own .btn styling instead of turning into Sign-out red. */
+.topbar > button {
   background: #c0392b;
   color: #fff;
   border: none;
@@ -46,7 +54,31 @@ body { user-select: none; -webkit-user-select: none; }
   font-size: 13px;
   cursor: pointer;
 }
-.topbar button:hover { background: #a93226; }
+.topbar > button:hover { background: #a93226; }
+.topbar > button { white-space: nowrap; }
+
+/* Slot a full-screen task stage fills with its own title/controls. Empty on
+   every other page, and while it's filled the nav links step aside. */
+/* The mount is transparent to layout; the slot node inside it is the real
+   flex item, so slotted content sits in the bar like any other element. */
+.topbar-slot-mount { display: contents; }
+.topbar-slot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.topbar-slot:empty { display: none; }
+/* A filled slot means the bar is carrying a task's controls too, so make room:
+   the nav links step aside, the pills drop to name + dot, spacing tightens. */
+.topbar-slot-mount:has(.topbar-slot:not(:empty)) ~ .nav-links { display: none; }
+@media (max-width: 1500px) {
+  .topbar-slot-mount:has(.topbar-slot:not(:empty)) ~ .sensor-bar .sensor-pill-status {
+    display: none;
+  }
+  .topbar:has(.topbar-slot:not(:empty)) { gap: 10px; }
+}
 
 .screen {
   flex: 1;
@@ -118,6 +150,11 @@ h2 { font-size: 26px; }
 .hint { color: #777; font-size: 16px; margin-top: 6px; }
 
 /* ---- Sensor status pill ---- */
+.sensor-bar {
+  display: inline-flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
 .sensor-pill {
   display: inline-flex;
   align-items: center;
@@ -126,6 +163,7 @@ h2 { font-size: 26px; }
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
 }
 .sensor-pill .dot {
   width: 8px;
@@ -607,42 +645,63 @@ h2 { font-size: 26px; }
 /* ---- AES Avatar player ---- */
 
 /*
- * The avatar screen is a fixed-height stage: the video grows to fill whatever
- * vertical space is left over so everything stays visible without scrolling.
+ * The avatar screen is a full-window stage. Only two strips of chrome are left:
+ * the app top bar (which the page fills with its title, progress and controls
+ * through <TopbarSlot>) and a slim response bar at the bottom. Everything in
+ * between is video, edge to edge and without scrolling.
+ *
+ * --aes-bg matches the flat backdrop baked into every avatar clip (#e3e1e2,
+ * measured across all 20 videos), so the stage blends into the footage and no
+ * letterboxing is visible whatever the window's shape.
+ *
+ * --aes-zoom scales the footage up and clips the overflow from the bottom, so
+ * the avatar reads chest-up instead of sitting in a wide 16:9 frame where she
+ * only fills ~43% of the width. The head stays clear at any value because the
+ * transform is anchored to the top; raise it for a tighter crop, or set it to
+ * 1 to show each clip exactly as filmed.
  */
 .aes-screen {
+  --aes-bg: #e3e1e2;
+  --aes-zoom: 1.18;
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  max-width: 1600px;
-  padding: 8px 20px 12px;
-  gap: 10px;
+  max-width: none;
+  width: 100%;
+  padding: 0;
+  gap: 0;
+  background: var(--aes-bg);
 }
-.aes-topline {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-.aes-topline-title {
-  font-size: 20px;
+/* Title + progress + actions, portalled into the top bar. */
+.topbar-slot .aes-topline-title {
+  font-size: 15px;
   font-weight: 700;
   color: #2c3e50;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
-.aes-topline .aes-progress {
+.topbar-slot .aes-progress {
   margin: 0;
-  font-size: 19px;
+  font-size: 14px;
+  font-weight: 600;
   color: #555;
+  white-space: nowrap;
 }
-.aes-topline-actions {
-  margin-left: auto;
+.topbar-slot .aes-topline-actions {
   display: flex;
   gap: 8px;
+  flex: 0 0 auto;
 }
 .btn-sm {
   margin: 0;
-  padding: 6px 14px;
-  font-size: 15px;
+  padding: 5px 12px;
+  font-size: 14px;
+}
+/* Narrow windows: drop the task name, keep "Question n of 18". */
+@media (max-width: 1250px) {
+  .topbar-slot .aes-topline-title { display: none; }
 }
 
 .aes-video-frame {
@@ -650,31 +709,34 @@ h2 { font-size: 26px; }
   width: 100%;
   max-width: 860px;
   aspect-ratio: 16 / 9;
-  background: #000;
+  background: var(--aes-bg, #000);
   border-radius: 14px;
   border: 1px solid #e0e0e0;
   overflow: hidden;
   margin: 0 auto;
 }
-/* Height comes from the flex row; aspect-ratio then derives the width, so the
-   frame hugs the video and no letterboxing shows around it. */
+/* On the stage the frame is full-bleed: it takes every pixel the two bars
+   don't, with no aspect-ratio of its own, no border and no rounding. */
 .aes-screen .aes-video-frame {
   flex: 1 1 0;
   min-height: 0;
-  width: auto;
-  max-width: 100%;
-  align-self: center;
+  width: 100%;
+  max-width: none;
+  aspect-ratio: auto;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
 }
 .aes-audio-badge {
   position: absolute;
   left: 50%;
-  bottom: 16px;
+  bottom: 14px;
   transform: translateX(-50%);
   background: rgba(0, 0, 0, 0.72);
   color: #fff;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
-  padding: 9px 18px;
+  padding: 8px 16px;
   border-radius: 999px;
   white-space: nowrap;
   pointer-events: none;
@@ -685,34 +747,42 @@ h2 { font-size: 26px; }
   flex: 0 0 auto;
   display: flex;
   align-items: stretch;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
+  padding: 6px 10px;
+  background: #fafafa;
+  border-top: 1px solid #dcdcdc;
 }
 .aes-control-row-center { justify-content: center; }
+.aes-control-row .btn { margin: 0; }
 .aes-control-row .aes-opt {
   flex: 1 1 0;
   min-width: 0;
   margin: 0;
-  padding: 18px 10px;
-  font-size: 22px;
+  padding: 9px 8px;
+  border-radius: 9px;
+  font-size: 19px;
 }
 .aes-control-row .aes-nav-btn {
   flex: 0 0 auto;
   margin: 0;
-  padding: 18px 24px;
-  font-size: 19px;
+  padding: 9px 18px;
+  font-size: 17px;
 }
 
 @media (max-width: 1150px) {
-  .aes-control-row { gap: 8px; }
-  .aes-control-row .aes-opt { padding: 14px 6px; font-size: 18px; }
-  .aes-control-row .aes-nav-btn { padding: 14px 14px; font-size: 16px; }
+  .aes-control-row { gap: 6px; }
+  .aes-control-row .aes-opt { padding: 8px 4px; font-size: 16px; }
+  .aes-control-row .aes-nav-btn { padding: 8px 12px; font-size: 15px; }
 }
 .aes-video-frame video {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  background: #000;
+  object-position: center top;
+  background: var(--aes-bg, #000);
+  transform: scale(var(--aes-zoom, 1));
+  transform-origin: center top;
 }
 .aes-progress {
   text-align: center;

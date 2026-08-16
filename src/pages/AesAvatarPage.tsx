@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ConnectionGate } from "../components/ConnectionGate";
+import { TopbarSlot } from "../components/TopbarSlot";
 import { useCanStartTask } from "../hooks/useSensors";
 import { useTaskTiming } from "../hooks/useTaskTiming";
 import {
@@ -276,11 +277,13 @@ export const AesAvatarPage = () => {
     );
   }
 
+  // The player is a full-window stage: title, progress and controls live in the
+  // top bar (via TopbarSlot) and the responses in a slim bar at the bottom, so
+  // everything in between belongs to the avatar. The sensor banner is left off
+  // this screen deliberately — the top bar already shows both sensor pills.
   return (
     <div className="screen aes-screen">
-      <ConnectionGate />
-
-      <div className="aes-topline">
+      <TopbarSlot>
         <span className="aes-topline-title">{TASK_LABEL.aes_avatar}</span>
         <span className="aes-progress">
           {stage === "intro" ? "Welcome" : `Question ${idx + 1} of ${TASK_VIDEOS.length}`}
@@ -291,7 +294,7 @@ export const AesAvatarPage = () => {
           )}
           <button className="btn btn-warn btn-sm" onClick={onStopEarly}>End early &amp; save</button>
         </span>
-      </div>
+      </TopbarSlot>
 
       <div className="aes-video-frame" onClick={onUnlockAudio} title="Click to enable audio">
         {/* eslint-disable-next-line jsx-a11y/media-has-caption */}

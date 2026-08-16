@@ -10,6 +10,7 @@ import {
 import { setTestMode } from "../lib/testmode";
 import { useTestMode } from "../hooks/useTestMode";
 import { SensorStatusBar } from "./SensorStatus";
+import { TopbarSlotHost } from "./TopbarSlot";
 
 /** Every task, in default order, for the test-mode jump menu. */
 const ALL_TASKS: TaskKey[] = ["baseline_start", ...REORDERABLE_TASKS, "baseline_end"];
@@ -29,6 +30,9 @@ export const Layout = ({ children }: { children: React.ReactNode }) => {
     <div className={`app${testMode ? " test-mode" : ""}`}>
       <div className="topbar">
         <span className="title">DIOR</span>
+        {/* Task screens that need the full window (AES avatar) portal their
+            title and controls in here via <TopbarSlot>. */}
+        <TopbarSlotHost />
         <span className="nav-links">
           <Link to="/session-setup">Setup</Link>
           <Link to="/baseline/start">Baseline ▶</Link>
